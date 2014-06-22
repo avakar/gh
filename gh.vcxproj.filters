@@ -1,0 +1,23 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="main.cpp" />
+    <ClCompile Include="file.cpp" />
+    <ClCompile Include="zlib_stream.cpp" />
+    <ClCompile Include="stream.cpp" />
+    <ClCompile Include="text_reader.cpp" />
+    <ClCompile Include="utf.cpp" />
+    <ClCompile Include="gitdb.cpp" />
+    <ClCompile Include="object_id.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="file.h" />
+    <ClInclude Include="string_view.h" />
+    <ClInclude Include="zlib_stream.h" />
+    <ClInclude Include="stream.h" />
+    <ClInclude Include="text_reader.h" />
+    <ClInclude Include="utf.h" />
+    <ClInclude Include="gitdb.h" />
+    <ClInclude Include="object_id.h" />
+  </ItemGroup>
+</Project>
