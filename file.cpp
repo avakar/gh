@@ -199,8 +199,15 @@ size_t file::write_abs(file_offset_t pos, uint8_t const * p, size_t capacity)
 	return written;
 }
 
-void make_directory(string_view path)
+bool make_directory(string_view path)
 {
 	if (!::CreateDirectoryW(to_utf16(path).c_str(), 0))
-		throw windows_error(::GetLastError());
+	{
+		DWORD dwError = ::GetLastError();
+		if (dwError == ERROR_ALREADY_EXISTS)
+			return false;
+		throw windows_error(dwError);
+	}
+
+	return true;
 }

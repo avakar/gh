@@ -20,7 +20,13 @@ static void checkout_tree(gitdb & db, string_view dir, gitdb::tree_t const & t)
 	{
 		std::string name = dir.to_string() + "/" + te.name;
 
-		if (te.mode & 0x4000)
+		volatile int mm = te.mode;
+
+		if ((te.mode & 0xe000) == 0xe000)
+		{
+			// XXX gitlink
+		}
+		else if (te.mode & 0x4000)
 		{
 			make_directory(name);
 			checkout_tree(db, name, db.get_tree(te.oid));

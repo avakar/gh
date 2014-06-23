@@ -125,6 +125,6 @@ inline dir_enum_proxy listdir(string_view path, string_view mask = "*")
 	return dir_enum_proxy(path, mask);
 }
 
-void make_directory(string_view path);
+bool make_directory(string_view path);
 
 #endif // FILE_H

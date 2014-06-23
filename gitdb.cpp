@@ -206,10 +206,10 @@ gitdb::object object_pack::get_object(object_id oid, gitdb::object_type req_type
 
 gitdb::object object_pack::get_object(file_offset_t offs, gitdb::object_type req_type)
 {
-	uint8_t buf[32];
+	uint8_t buf[64];
 
 	file::ifile packi = pack.seekg(offs);
-	read_all(packi, buf, sizeof buf);
+	read_up_to(packi, buf, sizeof buf);
 
 	uint8_t * p = buf;
 	gitdb::object_type type = static_cast<gitdb::object_type>((buf[0] >> 4) & 7);
@@ -236,6 +236,19 @@ gitdb::object object_pack::get_object(file_offset_t offs, gitdb::object_type req
 		obj.content = std::make_shared<patch_stream>(std::move(base_obj.content), pack.seekg(offs + (p - buf)));
 		obj.type = base_obj.type;
 		return obj;
+	}
+	else if (type == gitdb::object_type::ref_delta)
+	{
+		object_id base_oid(p);
+		gitdb::object base_obj = this->get_object(base_oid, req_type);
+		if (!base_obj.content)
+			return gitdb::object();
+
+		gitdb::object obj;
+		obj.content = std::make_shared<patch_stream>(std::move(base_obj.content), pack.seekg(offs + (p + 20 - buf)));
+		obj.type = base_obj.type;
+		return obj;
+
 	}
 	else
 	{
@@ -272,8 +285,11 @@ struct gitdb::impl
 void gitdb::impl::load_pack(string_view path)
 {
 	object_pack & op = m_packs[path.to_string()];
-	op.idx.open(path.to_string() + ".idx", /*readonly=*/true);
-	op.pack.open(path.to_string() + ".pack", /*readonly=*/true);
+	if (!op.idx.try_open(path.to_string() + ".idx", /*readonly=*/true) || !op.pack.try_open(path.to_string() + ".pack", /*readonly=*/true))
+	{
+		m_packs.erase(path.to_string());
+		return;
+	}
 
 	uint8_t header[8 + 256 * 4];
 	file::ifile idxi = op.idx.seekg(0);
