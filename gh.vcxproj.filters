@@ -9,6 +9,7 @@
     <ClCompile Include="utf.cpp" />
     <ClCompile Include="gitdb.cpp" />
     <ClCompile Include="object_id.cpp" />
+    <ClCompile Include="sha1.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="file.h" />
@@ -19,5 +20,6 @@
     <ClInclude Include="utf.h" />
     <ClInclude Include="gitdb.h" />
     <ClInclude Include="object_id.h" />
+    <ClInclude Include="sha1.h" />
   </ItemGroup>
 </Project>

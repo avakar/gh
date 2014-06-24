@@ -53,4 +53,14 @@ T load_be(uint8_t const * p)
 	return res;
 }
 
+template <typename T>
+void store_be(uint8_t * p, T v)
+{
+	for (size_t i = sizeof(T); i != 0; --i)
+	{
+		p[i - 1] = (uint8_t)v;
+		v >>= 8;
+	}
+}
+
 #endif // STREAM_H
