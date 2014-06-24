@@ -93,6 +93,8 @@ public:
 
 	void open(gitdb & db, string_view path);
 
+	void status();
+
 	string_view path() const;
 
 private:

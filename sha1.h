@@ -2,6 +2,7 @@
 #define SHA1_H
 
 #include "string_view.h"
+#include "stream.h"
 #include <stdint.h>
 
 class sha1_state
@@ -20,5 +21,6 @@ private:
 };
 
 void sha1(uint8_t * hash, string_view data);
+void sha1(uint8_t * hash, istream & s);
 
 #endif // SHA1_H

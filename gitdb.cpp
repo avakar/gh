@@ -2,6 +2,7 @@
 #include "file.h"
 #include "text_reader.h"
 #include "zlib_stream.h"
+#include "sha1.h"
 #include <memory>
 #include <map>
 #include <utility>
@@ -734,4 +735,20 @@ git_wd & git_wd::operator=(git_wd && o)
 string_view git_wd::path() const
 {
 	return m_pimpl->m_path;
+}
+
+void git_wd::status()
+{
+	for (auto && entry: m_pimpl->m_entries)
+	{
+		std::string full_path = m_pimpl->m_path + "/" + entry.name;
+		file fin;
+		if (fin.try_open(full_path, /*readonly=*/true))
+		{
+			file::ifile fi(fin.seekg(0));
+
+			uint8_t hash[20];
+			sha1(hash, fi);
+		}
+	}
 }

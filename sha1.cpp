@@ -133,3 +133,17 @@ void sha1(uint8_t * hash, string_view data)
 	ss.add((uint8_t const *)data.begin(), (uint8_t const *)data.end());
 	ss.finish(hash);
 }
+
+void sha1(uint8_t * hash, istream & s)
+{
+	uint8_t buf[4096];
+	sha1_state ss;
+	for (;;)
+	{
+		size_t r = s.read(buf, sizeof buf);
+		if (r == 0)
+			break;
+		ss.add(buf, buf + r);
+	}
+	ss.finish(hash);
+}

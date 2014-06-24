@@ -205,6 +205,8 @@ static int gh_status(args_t & args)
 		return 2;
 	}
 
+	wd.status();
+
 	return 0;
 }
 
