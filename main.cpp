@@ -1,6 +1,7 @@
 #include "gitdb.h"
 #include "text_reader.h"
 #include "file.h"
+#include <time.h>
 #include <iostream>
 
 void print_stream(istream & s)
@@ -207,16 +208,49 @@ static int gh_status(args_t & args)
 	return 0;
 }
 
+class timer
+{
+public:
+	explicit timer(bool active)
+	{
+		m_start_time = clock();
+		m_active = active;
+	}
+
+	~timer()
+	{
+		if (m_active)
+			std::cout << "Spent time: " << (double)(clock() - m_start_time) / CLOCKS_PER_SEC << "\n";
+	}
+
+private:
+	bool m_active;
+	clock_t m_start_time;
+};
+
 int main(int argc, char * argv[])
 {
 	args_t args(&argv[1], &argv[argc]);
 	std::string cmd = parse_cmd(args);
 
+	bool profile = pop_switch(args, 0, "--time");
+
 	try
 	{
+		timer tmr(profile);
+
 		if (cmd == "init")
 		{
 			return gh_init(args);
+		}
+		else if (cmd == "test-checkout")
+		{
+			gitdb db0;
+			db0.open(args[0]);
+			object_id head_oid = db0.get_ref(args[1]);
+			gitdb::commit_t cc = db0.get_commit(head_oid);
+			checkout_tree(db0, args[2], db0.get_tree(cc.tree_oid));
+			return 0;
 		}
 		else if (cmd == "status")
 		{
@@ -232,18 +266,4 @@ int main(int argc, char * argv[])
 	}
 
 	return 0;
-
-/*	if (argc < 4)
-	{
-		std::cout << "Usage: gh <repo> <ref> <checkout-target>" << std::endl;
-		return 1;
-	}
-
-
-	gitdb db0;
-	db0.open(argv[1]);
-	object_id head_oid = db0.get_ref(argv[2]);
-	gitdb::commit_t cc = db0.get_commit(head_oid);
-	checkout_tree(db0, argv[3], db0.get_tree(cc.tree_oid));
-	return 0;*/
 }
