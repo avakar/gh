@@ -4,6 +4,7 @@
 #include "zlib_stream.h"
 #include <memory>
 #include <map>
+#include <utility>
 
 static size_t get_variant(uint8_t const *& p, uint8_t const * last)
 {
@@ -341,7 +342,12 @@ void gitdb::impl::load_packed_refs(istream & fin)
 	}
 }
 
-gitdb::gitdb(string_view path)
+gitdb::gitdb()
+	: m_pimpl(0)
+{
+}
+
+void gitdb::open(string_view path)
 {
 	std::unique_ptr<impl> pimpl(new impl());
 	pimpl->m_path = path;
@@ -350,9 +356,31 @@ gitdb::gitdb(string_view path)
 	m_pimpl = pimpl.release();
 }
 
+void gitdb::create(string_view path)
+{
+	make_directory(path.to_string() + "/refs");
+	make_directory(path.to_string() + "/refs/heads");
+	make_directory(path.to_string() + "/refs/tags");
+	make_directory(path.to_string() + "/objects");
+	make_directory(path.to_string() + "/objects/pack");
+	file::create(path.to_string() + "/HEAD", "ref: refs/heads/master\n");
+}
+
+gitdb::gitdb(gitdb && o)
+	: m_pimpl(o.m_pimpl)
+{
+	o.m_pimpl = 0;
+}
+
 gitdb::~gitdb()
 {
 	delete m_pimpl;
+}
+
+gitdb & gitdb::operator=(gitdb && o)
+{
+	std::swap(m_pimpl, o.m_pimpl);
+	return *this;
 }
 
 std::vector<uint8_t> gitdb::get_object_content(object_id oid, object_type type)
@@ -571,4 +599,107 @@ std::vector<uint8_t> gitdb::get_blob(object_id oid)
 std::shared_ptr<istream> gitdb::get_blob_stream(object_id oid)
 {
 	return this->get_object_stream(oid, object_type::blob);
+}
+
+git_wd::git_wd()
+	: m_db(0)
+{
+}
+
+struct index_entry
+{
+	uint32_t ctime;
+	uint32_t ctime_nano;
+	uint32_t mtime;
+	uint32_t mtime_nano;
+	uint32_t dev;
+	uint32_t ino;
+	uint32_t mode;
+	uint32_t uid;
+	uint32_t gid;
+	uint32_t size;
+	object_id oid;
+	uint16_t flags;
+	std::string name;
+};
+
+void git_wd::open(gitdb & db, string_view path)
+{
+	file fidx;
+	fidx.open(path + "/.git/index", /*readonly=*/true);
+	file::ifile fin(fidx.seekg(0));
+
+	uint8_t header[12];
+	read_all(fin, header, sizeof header);
+
+	if (header[0] != 'D' || header[1] != 'I' || header[2] != 'R' || header[3] != 'C'
+		|| load_be<uint32_t>(header + 4) != 2)
+	{
+		throw std::runtime_error("XXX invalid index");
+	}
+
+	uint32_t entry_count = load_be<uint32_t>(header + 8);
+
+	std::vector<index_entry> entries;
+
+	std::vector<uint8_t> buffer;
+	while (entries.size() < entry_count)
+	{
+		size_t old_size = buffer.size();
+		buffer.resize(old_size + 8 * 1024);
+
+		size_t r = fin.read(buffer.data() + old_size, 8*1024);
+		if (r == 0)
+			throw std::runtime_error("XXX broken index");
+
+		buffer.resize(old_size + r);
+
+		uint8_t const * p = buffer.data();
+		uint8_t const * last = p + buffer.size();
+		while (entries.size() < entry_count && last - p > 62)
+		{
+			uint8_t const * n = p+62;
+			uint8_t const * name_start = n;
+			while (n != last && *n != 0)
+				++n;
+
+			uint8_t const * name_end = n;
+			if (n != last)
+				++n;
+			while ((n - p) % 8 != 0 && n != last)
+				++n;
+
+			if (n != last)
+			{
+				// We have a whole entry!
+				index_entry ie;
+
+				ie.ctime = load_be<uint32_t>(p);
+				ie.ctime_nano = load_be<uint32_t>(p + 4);
+				ie.mtime = load_be<uint32_t>(p + 8);
+				ie.mtime_nano = load_be<uint32_t>(p + 12);
+				ie.dev = load_be<uint32_t>(p + 16);
+				ie.ino = load_be<uint32_t>(p + 20);
+				ie.mode = load_be<uint32_t>(p + 24);
+				ie.uid = load_be<uint32_t>(p + 28);
+				ie.gid = load_be<uint32_t>(p + 32);
+				ie.size = load_be<uint32_t>(p + 36);
+				ie.oid = object_id(p + 40);
+				ie.flags = load_be<uint16_t>(p + 60);
+				ie.name.assign(name_start, name_end);
+
+				entries.push_back(ie);
+
+				p = n;
+			}
+			else
+			{
+				break;
+			}
+		}
+
+		buffer.erase(buffer.begin(), buffer.begin() + (p - buffer.data()));
+	}
+
+	m_db = &db;
 }

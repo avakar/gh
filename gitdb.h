@@ -54,8 +54,13 @@ public:
 
 	typedef std::vector<tree_entry_t> tree_t;
 
-	explicit gitdb(string_view path);
+	gitdb();
+	gitdb(gitdb && o);
 	~gitdb();
+	gitdb & operator=(gitdb && o);
+
+	void open(string_view path);
+	static void create(string_view path);
 
 	std::vector<uint8_t> get_object_content(object_id oid, object_type req_type = object_type::none);
 	object get_object(object_id oid);
@@ -73,6 +78,22 @@ public:
 private:
 	struct impl;
 	impl * m_pimpl;
+
+	gitdb(gitdb const &);
+	gitdb & operator=(gitdb const &);
+};
+
+class git_wd
+{
+public:
+	git_wd();
+	void open(gitdb & db, string_view path);
+
+private:
+	gitdb * m_db;
+
+	git_wd(git_wd const &);
+	git_wd & operator=(git_wd const &);
 };
 
 #endif // GITDB_H

@@ -201,7 +201,8 @@ size_t file::write_abs(file_offset_t pos, uint8_t const * p, size_t capacity)
 
 bool make_directory(string_view path)
 {
-	if (!::CreateDirectoryW(to_utf16(path).c_str(), 0))
+	std::wstring wpath = to_utf16(path);
+	if (!::CreateDirectoryW(wpath.c_str(), 0))
 	{
 		DWORD dwError = ::GetLastError();
 		if (dwError == ERROR_ALREADY_EXISTS)
@@ -209,5 +210,85 @@ bool make_directory(string_view path)
 		throw windows_error(dwError);
 	}
 
+	size_t slash_pos = wpath.find_last_of(L"/\\");
+	if (slash_pos < wpath.size() - 1 && wpath[slash_pos + 1] == '.')
+		::SetFileAttributesW(wpath.c_str(), FILE_ATTRIBUTE_HIDDEN);
+
 	return true;
+}
+
+void file::create(string_view path, string_view content)
+{
+	file fout;
+	fout.open(path, /*readonly=*/false);
+
+	ofile of = fout.seekp(0);
+	write_all(of, (uint8_t const *)content.begin(), content.size());
+}
+
+string_view get_path_head(string_view path)
+{
+	char const * p = path.end();
+	for (; p != path.begin(); --p)
+	{
+		if (p[-1] == '/' || p[-1] == '\\')
+			return string_view(path.begin(), p - 1);
+	}
+	return string_view();
+}
+
+string_view get_path_tail(string_view path)
+{
+	char const * p = path.end();
+	for (; p != path.begin(); --p)
+	{
+		if (p[-1] == '/' || p[-1] == '\\')
+			return string_view(p, path.end());
+	}
+	return path;
+}
+
+bool file::exists(string_view path)
+{
+	DWORD attrs = ::GetFileAttributesW(to_utf16(path).c_str());
+
+	if (attrs == INVALID_FILE_ATTRIBUTES)
+	{
+		DWORD dwError = ::GetLastError();
+		if (dwError != ERROR_FILE_NOT_FOUND && dwError != ERROR_PATH_NOT_FOUND)
+			throw windows_error(dwError);
+		return false;
+	}
+
+	return true;
+}
+
+bool file::is_file(string_view path)
+{
+	DWORD attrs = ::GetFileAttributesW(to_utf16(path).c_str());
+
+	if (attrs == INVALID_FILE_ATTRIBUTES)
+	{
+		DWORD dwError = ::GetLastError();
+		if (dwError != ERROR_FILE_NOT_FOUND && dwError != ERROR_PATH_NOT_FOUND)
+			throw windows_error(dwError);
+		return false;
+	}
+
+	return (attrs & FILE_ATTRIBUTE_DIRECTORY) == 0;
+}
+
+bool file::is_directory(string_view path)
+{
+	DWORD attrs = ::GetFileAttributesW(to_utf16(path).c_str());
+
+	if (attrs == INVALID_FILE_ATTRIBUTES)
+	{
+		DWORD dwError = ::GetLastError();
+		if (dwError != ERROR_FILE_NOT_FOUND && dwError != ERROR_PATH_NOT_FOUND)
+			throw windows_error(dwError);
+		return false;
+	}
+
+	return (attrs & FILE_ATTRIBUTE_DIRECTORY) != 0;
 }

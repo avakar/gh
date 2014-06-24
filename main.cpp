@@ -20,8 +20,6 @@ static void checkout_tree(gitdb & db, string_view dir, gitdb::tree_t const & t)
 	{
 		std::string name = dir.to_string() + "/" + te.name;
 
-		volatile int mm = te.mode;
-
 		if ((te.mode & 0xe000) == 0xe000)
 		{
 			// XXX gitlink
@@ -43,18 +41,209 @@ static void checkout_tree(gitdb & db, string_view dir, gitdb::tree_t const & t)
 	}
 }
 
+typedef std::vector<std::string> args_t;
+
+static std::string parse_cmd(args_t & args)
+{
+	bool parse_switches = true;
+	for (size_t i = 0; i < args.size(); ++i)
+	{
+		string_view arg = args[i];
+
+		if (arg == "--")
+		{
+			parse_switches = false;
+		}
+		else if (!parse_switches || !starts_with(arg, "-"))
+		{
+			std::string res = arg;
+			args.erase(args.begin() + i);
+			return res;
+		}
+	}
+
+	return "help";
+}
+
+static bool pop_arg_value(std::string & res, args_t & args, char short_name, string_view long_name)
+{
+	for (size_t i = 0; i < args.size(); ++i)
+	{
+		string_view arg = args[i];
+		if (arg == "--")
+			return false;
+
+		if (arg == long_name || (arg.size() == 2 && arg[0] == '-' && arg[1] == short_name))
+		{
+			if (i + 1 >= args.size())
+				return false;
+
+			res = args[i + 1];
+			args.erase(args.begin() + i, args.begin() + i + 2);
+			return true;
+		}
+	}
+
+	return false;
+}
+
+static std::string pop_arg_value(args_t & args, char short_name, string_view long_name , string_view def)
+{
+	std::string res;
+	if (!pop_arg_value(res, args, short_name, long_name))
+		return def;
+	return res;
+}
+
+static bool pop_switch(args_t & args, char short_name, string_view long_name)
+{
+	for (size_t i = 0; i < args.size(); ++i)
+	{
+		std::string & arg = args[i];
+		if (arg == "--")
+			return false;
+
+		if (arg == long_name)
+		{
+			args.erase(args.begin() + i);
+			return true;
+		}
+
+		if (starts_with(arg, "-") && !starts_with(arg, "--"))
+		{
+			auto it = std::find(arg.begin(), arg.end(), short_name);
+			if (it != arg.end())
+			{
+				if (arg.size() == 2)
+					args.erase(args.begin() + i);
+				else
+					arg.erase(it);
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+static int gh_init(args_t & args)
+{
+	std::string repo_arg = pop_arg_value(args, 'R', "--repo", ".");
+	bool bare = pop_switch(args, 0, "--bare");
+
+	if (!bare)
+	{
+		std::string path = repo_arg + "/.git";
+		if (!make_directory(path))
+		{
+			std::cerr << "error: the directory already exists: " << path << "\n";
+			return 1;
+		}
+
+		gitdb::create(path);
+	}
+	else
+	{
+		gitdb::create(repo_arg);
+	}
+
+	return 0;
+}
+
+/*static std::string find_repo(string_view path)
+{
+	while (!path.empty())
+	{
+		std::string nonbare_path = path + "/.git";
+		if (file::is_directory(nonbare_path))
+			return nonbare_path;
+
+		if (file::is_file(path + "/HEAD") && file::is_directory(path + "/objects") && file::is_directory(path + "/refs"))
+			return path;
+
+		path = get_path_head(path);
+	}
+
+	return path;
+}
+
+static bool open_repo(gitdb & db, string_view path)
+{
+	std::string repo_path = find_repo(path);
+	if (repo_path.empty())
+		return false;
+
+	db.open(repo_path);
+	return true;
+}*/
+
+static bool open_wd(gitdb & db, git_wd & wd, string_view path)
+{
+	while (!path.empty())
+	{
+		std::string nonbare_path = path + "/.git";
+		if (file::is_directory(nonbare_path))
+		{
+			db.open(nonbare_path);
+			wd.open(db, path);
+			return true;
+		}
+	}
+	return false;
+}
+
+static int gh_status(args_t & args)
+{
+	std::string repo_arg = pop_arg_value(args, 'R', "--repo", ".");
+
+	gitdb db;
+	git_wd wd;
+	if (!open_wd(db, wd, repo_arg))
+	{
+		std::cerr << "error: not a git repository: " << repo_arg << "\n";
+		return 2;
+	}
+
+	return 0;
+}
+
 int main(int argc, char * argv[])
 {
-	if (argc < 4)
+	args_t args(&argv[1], &argv[argc]);
+	std::string cmd = parse_cmd(args);
+
+	try
+	{
+		if (cmd == "init")
+		{
+			return gh_init(args);
+		}
+		else if (cmd == "status")
+		{
+			return gh_status(args);
+		}
+
+		return 1;
+	}
+	catch (std::exception const & e)
+	{
+		std::cerr << "error: " << e.what() << "\n";
+		return 1;
+	}
+
+	return 0;
+
+/*	if (argc < 4)
 	{
 		std::cout << "Usage: gh <repo> <ref> <checkout-target>" << std::endl;
 		return 1;
 	}
 
 
-	gitdb db0(argv[1]);
+	gitdb db0;
+	db0.open(argv[1]);
 	object_id head_oid = db0.get_ref(argv[2]);
 	gitdb::commit_t cc = db0.get_commit(head_oid);
 	checkout_tree(db0, argv[3], db0.get_tree(cc.tree_oid));
-	return 0;
+	return 0;*/
 }

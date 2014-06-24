@@ -70,6 +70,12 @@ public:
 	ifile seekg(file_offset_t pos);
 	ofile seekp(file_offset_t pos);
 
+	static void create(string_view path, string_view content);
+
+	static bool exists(string_view path);
+	static bool is_file(string_view path);
+	static bool is_directory(string_view path);
+
 private:
 	intptr_t m_fd;
 
@@ -126,5 +132,8 @@ inline dir_enum_proxy listdir(string_view path, string_view mask = "*")
 }
 
 bool make_directory(string_view path);
+
+string_view get_path_head(string_view path);
+string_view get_path_tail(string_view path);
 
 #endif // FILE_H
