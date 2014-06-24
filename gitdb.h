@@ -87,10 +87,17 @@ class git_wd
 {
 public:
 	git_wd();
+	~git_wd();
+	git_wd(git_wd && o);
+	git_wd & operator=(git_wd && o);
+
 	void open(gitdb & db, string_view path);
 
+	string_view path() const;
+
 private:
-	gitdb * m_db;
+	struct impl;
+	impl * m_pimpl;
 
 	git_wd(git_wd const &);
 	git_wd & operator=(git_wd const &);

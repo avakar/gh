@@ -601,11 +601,6 @@ std::shared_ptr<istream> gitdb::get_blob_stream(object_id oid)
 	return this->get_object_stream(oid, object_type::blob);
 }
 
-git_wd::git_wd()
-	: m_db(0)
-{
-}
-
 struct index_entry
 {
 	uint32_t ctime;
@@ -623,8 +618,29 @@ struct index_entry
 	std::string name;
 };
 
+struct git_wd::impl
+{
+	gitdb * m_db;
+	std::string m_path;
+	std::vector<index_entry> m_entries;
+};
+
+git_wd::git_wd()
+	: m_pimpl(0)
+{
+}
+
+git_wd::~git_wd()
+{
+	delete m_pimpl;
+}
+
 void git_wd::open(gitdb & db, string_view path)
 {
+	std::unique_ptr<impl> pimpl(new impl());
+	pimpl->m_db = &db;
+	pimpl->m_path = path;
+
 	file fidx;
 	fidx.open(path + "/.git/index", /*readonly=*/true);
 	file::ifile fin(fidx.seekg(0));
@@ -640,10 +656,8 @@ void git_wd::open(gitdb & db, string_view path)
 
 	uint32_t entry_count = load_be<uint32_t>(header + 8);
 
-	std::vector<index_entry> entries;
-
 	std::vector<uint8_t> buffer;
-	while (entries.size() < entry_count)
+	while (pimpl->m_entries.size() < entry_count)
 	{
 		size_t old_size = buffer.size();
 		buffer.resize(old_size + 8 * 1024);
@@ -656,7 +670,7 @@ void git_wd::open(gitdb & db, string_view path)
 
 		uint8_t const * p = buffer.data();
 		uint8_t const * last = p + buffer.size();
-		while (entries.size() < entry_count && last - p > 62)
+		while (pimpl->m_entries.size() < entry_count && last - p > 62)
 		{
 			uint8_t const * n = p+62;
 			uint8_t const * name_start = n;
@@ -688,7 +702,7 @@ void git_wd::open(gitdb & db, string_view path)
 				ie.flags = load_be<uint16_t>(p + 60);
 				ie.name.assign(name_start, name_end);
 
-				entries.push_back(ie);
+				pimpl->m_entries.push_back(ie);
 
 				p = n;
 			}
@@ -701,5 +715,23 @@ void git_wd::open(gitdb & db, string_view path)
 		buffer.erase(buffer.begin(), buffer.begin() + (p - buffer.data()));
 	}
 
-	m_db = &db;
+	delete m_pimpl;
+	m_pimpl = pimpl.release();
+}
+
+git_wd::git_wd(git_wd && o)
+	: m_pimpl(o.m_pimpl)
+{
+	o.m_pimpl = 0;
+}
+
+git_wd & git_wd::operator=(git_wd && o)
+{
+	std::swap(m_pimpl, o.m_pimpl);
+	return *this;
+}
+
+string_view git_wd::path() const
+{
+	return m_pimpl->m_path;
 }
