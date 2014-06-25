@@ -1,4 +1,5 @@
 #include "object_id.h"
+#include "sha1.h"
 #include <assert.h>
 #include <algorithm>
 
@@ -55,4 +56,18 @@ bool operator==(object_id const & lhs, object_id const & rhs)
 bool operator!=(object_id const & lhs, object_id const & rhs)
 {
 	return !(lhs == rhs);
+}
+
+object_id sha1(string_view data)
+{
+	uint8_t hash[20];
+	sha1(hash, data);
+	return object_id(hash);
+}
+
+object_id sha1(istream & s)
+{
+	uint8_t hash[20];
+	sha1(hash, s);
+	return object_id(hash);
 }

@@ -98,3 +98,17 @@ void write_all(ostream & s, uint8_t const * p, size_t size)
 		size -= w;
 	}
 }
+
+file_offset_t stream_size(istream & s)
+{
+	uint8_t buf[4096];
+	file_offset_t res = 0;
+	for (;;)
+	{
+		size_t r = s.read(buf, sizeof buf);
+		if (r == 0)
+			break;
+		res += r;
+	}
+	return res;
+}

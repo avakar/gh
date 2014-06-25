@@ -193,6 +193,8 @@ static bool open_wd(gitdb & db, git_wd & wd, string_view path)
 	return false;
 }
 
+#include "sha1.h"
+
 static int gh_status(args_t & args)
 {
 	std::string repo_arg = pop_arg_value(args, 'R', "--repo", ".");
@@ -205,7 +207,15 @@ static int gh_status(args_t & args)
 		return 2;
 	}
 
-	wd.status();
+	std::map<std::string, git_wd::file_status> fs;
+	wd.status(fs);
+
+	for (auto && kv: fs)
+	{
+		char stati[] = "ADM";
+
+		std::cout << stati[static_cast<int>(kv.second)] << " " << kv.first << "\n";
+	}
 
 	return 0;
 }

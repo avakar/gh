@@ -25,6 +25,7 @@ void read_all(istream & s, uint8_t * p, size_t size);
 std::vector<uint8_t> read_all(istream & s, size_t size);
 std::vector<uint8_t> read_all(istream & s);
 bool skip(istream & s, size_t len);
+file_offset_t stream_size(istream & s);
 
 void write_all(ostream & s, uint8_t const * p, size_t size);
 

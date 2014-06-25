@@ -2,6 +2,7 @@
 #define OBJECT_ID_H
 
 #include "string_view.h"
+#include "stream.h"
 #include <string>
 #include <stdint.h>
 
@@ -21,5 +22,8 @@ public:
 private:
 	uint8_t id[20];
 };
+
+object_id sha1(string_view data);
+object_id sha1(istream & s);
 
 #endif // OBJECT_ID_H

@@ -236,6 +236,7 @@ gitdb::object object_pack::get_object(file_offset_t offs, gitdb::object_type req
 
 		gitdb::object obj;
 		obj.content = std::make_shared<patch_stream>(std::move(base_obj.content), pack.seekg(offs + (p - buf)));
+		obj.size = size;
 		obj.type = base_obj.type;
 		return obj;
 	}
@@ -248,6 +249,7 @@ gitdb::object object_pack::get_object(file_offset_t offs, gitdb::object_type req
 
 		gitdb::object obj;
 		obj.content = std::make_shared<patch_stream>(std::move(base_obj.content), pack.seekg(offs + (p + 20 - buf)));
+		obj.size = size;
 		obj.type = base_obj.type;
 		return obj;
 
@@ -259,6 +261,7 @@ gitdb::object object_pack::get_object(file_offset_t offs, gitdb::object_type req
 
 		gitdb::object obj;
 		obj.content = std::make_shared<packed_stream>(pack.seekg(offs + (p - buf)));
+		obj.size = size;
 		obj.type = type;
 		return obj;
 	}
@@ -424,6 +427,13 @@ gitdb::object gitdb::get_object(object_id oid)
 		return object();
 	}
 
+	{
+		file::ifile fi(f.seekg(0));
+		zlib_istream z(fi);
+		object_id oid = sha1(z);
+		oid.base16();
+	}
+
 	object obj;
 	size_t nul_pos;
 	{
@@ -451,6 +461,8 @@ gitdb::object gitdb::get_object(object_id oid)
 			obj.type = object_type::tag;
 		else
 			throw std::runtime_error("XXX unknown loose object type");
+
+		obj.size = atoi((char const *)buf + r);
 	}
 
 	obj.content = std::make_shared<loose_stream>(std::move(f));
@@ -737,7 +749,9 @@ string_view git_wd::path() const
 	return m_pimpl->m_path;
 }
 
-void git_wd::status()
+#include "checkout_filter.h"
+
+void git_wd::status(std::map<std::string, file_status> & st)
 {
 	for (auto && entry: m_pimpl->m_entries)
 	{
@@ -745,10 +759,54 @@ void git_wd::status()
 		file fin;
 		if (fin.try_open(full_path, /*readonly=*/true))
 		{
-			file::ifile fi(fin.seekg(0));
+			file_offset_t size;
 
-			uint8_t hash[20];
-			sha1(hash, fi);
+			{
+				file::ifile fi(fin.seekg(0));
+				checkin_filter cf(fi);
+				size = stream_size(cf);
+			}
+
+			file::ifile fi(fin.seekg(0));
+			checkin_filter cf(fi);
+
+			if (sha1(gitdb::object_type::blob, size, cf) != entry.oid)
+				st[entry.name] = file_status::modified;
+		}
+		else
+		{
+			st[entry.name] = file_status::deleted;
 		}
 	}
+}
+
+object_id sha1(gitdb::object_type type, file_offset_t size, istream & s)
+{
+	char const * obj_type_names[] =
+	{
+		0,
+		"commit",
+		"tree",
+		"blob",
+		"tag",
+	};
+
+	sha1_state ss;
+	ss.add(obj_type_names[static_cast<int>(type)]);
+	ss.add(" ");
+
+	char buf[16];
+	int r = sprintf(buf, "%d", (size_t)size);
+	ss.add(string_view(buf, buf + r + 1));
+
+	ss.add(s);
+
+	uint8_t hash[20];
+	ss.finish(hash);
+	return object_id(hash);
+}
+
+object_id sha1(gitdb::object obj)
+{
+	return sha1(obj.type, obj.size, *obj.content);
 }

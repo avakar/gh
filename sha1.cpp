@@ -105,6 +105,23 @@ void sha1_state::add(uint8_t const * first, uint8_t const * last)
 	std::copy(first, last, m_block);
 }
 
+void sha1_state::add(string_view s)
+{
+	this->add((uint8_t const *)s.begin(), (uint8_t const *)s.end());
+}
+
+void sha1_state::add(istream & s)
+{
+	uint8_t buf[4096];
+	for (;;)
+	{
+		size_t r = s.read(buf, sizeof buf);
+		if (r == 0)
+			break;
+		this->add(buf, buf + r);
+	}
+}
+
 void sha1_state::finish(uint8_t * hash)
 {
 	uint8_t sublen = m_message_len & 0x3f;
@@ -130,20 +147,13 @@ void sha1_state::finish(uint8_t * hash)
 void sha1(uint8_t * hash, string_view data)
 {
 	sha1_state ss;
-	ss.add((uint8_t const *)data.begin(), (uint8_t const *)data.end());
+	ss.add(data);
 	ss.finish(hash);
 }
 
 void sha1(uint8_t * hash, istream & s)
 {
-	uint8_t buf[4096];
 	sha1_state ss;
-	for (;;)
-	{
-		size_t r = s.read(buf, sizeof buf);
-		if (r == 0)
-			break;
-		ss.add(buf, buf + r);
-	}
+	ss.add(s);
 	ss.finish(hash);
 }

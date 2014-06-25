@@ -26,6 +26,7 @@ public:
 	struct object
 	{
 		object_type type;
+		size_t size;
 		std::shared_ptr<istream> content;
 	};
 
@@ -93,7 +94,14 @@ public:
 
 	void open(gitdb & db, string_view path);
 
-	void status();
+	enum class file_status
+	{
+		added,
+		deleted,
+		modified,
+	};
+
+	void status(std::map<std::string, file_status> & st);
 
 	string_view path() const;
 
@@ -104,5 +112,8 @@ private:
 	git_wd(git_wd const &);
 	git_wd & operator=(git_wd const &);
 };
+
+object_id sha1(gitdb::object_type type, file_offset_t size, istream & s);
+object_id sha1(gitdb::object obj);
 
 #endif // GITDB_H

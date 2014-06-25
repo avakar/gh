@@ -76,6 +76,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="checkout_filter.cpp" />
     <ClCompile Include="file.cpp" />
     <ClCompile Include="gitdb.cpp" />
     <ClCompile Include="main.cpp" />
@@ -87,6 +88,7 @@
     <ClCompile Include="zlib_stream.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="checkout_filter.h" />
     <ClInclude Include="file.h" />
     <ClInclude Include="gitdb.h" />
     <ClInclude Include="object_id.h" />

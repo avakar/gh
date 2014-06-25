@@ -12,6 +12,8 @@ public:
 
 	void reset();
 	void add(uint8_t const * first, uint8_t const * last);
+	void add(string_view s);
+	void add(istream & s);
 	void finish(uint8_t * hash);
 
 private:
