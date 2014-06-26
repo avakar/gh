@@ -99,6 +99,7 @@ public:
 		added,
 		deleted,
 		modified,
+		none,
 	};
 
 	void status(std::map<std::string, file_status> & st);

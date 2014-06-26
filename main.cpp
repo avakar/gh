@@ -264,7 +264,7 @@ int main(int argc, char * argv[])
 			checkout_tree(db0, args[2], db0.get_tree(cc.tree_oid));
 			return 0;
 		}
-		else if (cmd == "status")
+		else if (cmd == "st" || cmd == "status")
 		{
 			return gh_status(args);
 		}

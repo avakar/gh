@@ -3,6 +3,7 @@
 #include "text_reader.h"
 #include "zlib_stream.h"
 #include "sha1.h"
+#include "assert.h"
 #include <memory>
 #include <map>
 #include <utility>
@@ -617,25 +618,32 @@ std::shared_ptr<istream> gitdb::get_blob_stream(object_id oid)
 struct index_entry
 {
 	uint32_t ctime;
-	uint32_t ctime_nano;
+//	uint32_t ctime_nano;
 	uint32_t mtime;
-	uint32_t mtime_nano;
-	uint32_t dev;
-	uint32_t ino;
+//	uint32_t mtime_nano;
+//	uint32_t dev;
+//	uint32_t ino;
 	uint32_t mode;
-	uint32_t uid;
-	uint32_t gid;
+//	uint32_t uid;
+//	uint32_t gid;
 	uint32_t size;
 	object_id oid;
-	uint16_t flags;
+//	uint16_t flags;
 	std::string name;
+};
+
+struct index_dir
+{
+	std::map<std::string, index_dir> dirs;
+	std::vector<index_entry> files;
 };
 
 struct git_wd::impl
 {
 	gitdb * m_db;
 	std::string m_path;
-	std::vector<index_entry> m_entries;
+
+	index_dir m_root;
 };
 
 git_wd::git_wd()
@@ -668,9 +676,13 @@ void git_wd::open(gitdb & db, string_view path)
 	}
 
 	uint32_t entry_count = load_be<uint32_t>(header + 8);
+	uint32_t current_count = 0;
+
+	std::string current_dir_name;
+	index_dir * current_dir = &pimpl->m_root;
 
 	std::vector<uint8_t> buffer;
-	while (pimpl->m_entries.size() < entry_count)
+	while (current_count < entry_count)
 	{
 		size_t old_size = buffer.size();
 		buffer.resize(old_size + 8 * 1024);
@@ -683,7 +695,7 @@ void git_wd::open(gitdb & db, string_view path)
 
 		uint8_t const * p = buffer.data();
 		uint8_t const * last = p + buffer.size();
-		while (pimpl->m_entries.size() < entry_count && last - p > 62)
+		while (current_count < entry_count && last - p > 62)
 		{
 			uint8_t const * n = p+62;
 			uint8_t const * name_start = n;
@@ -696,26 +708,49 @@ void git_wd::open(gitdb & db, string_view path)
 			while ((n - p) % 8 != 0 && n != last)
 				++n;
 
+			string_view full_name((char const *)name_start, (char const *)name_end);
 			if (n != last)
 			{
 				// We have a whole entry!
 				index_entry ie;
 
 				ie.ctime = load_be<uint32_t>(p);
-				ie.ctime_nano = load_be<uint32_t>(p + 4);
+//				ie.ctime_nano = load_be<uint32_t>(p + 4);
 				ie.mtime = load_be<uint32_t>(p + 8);
-				ie.mtime_nano = load_be<uint32_t>(p + 12);
-				ie.dev = load_be<uint32_t>(p + 16);
-				ie.ino = load_be<uint32_t>(p + 20);
+//				ie.mtime_nano = load_be<uint32_t>(p + 12);
+//				ie.dev = load_be<uint32_t>(p + 16);
+//				ie.ino = load_be<uint32_t>(p + 20);
 				ie.mode = load_be<uint32_t>(p + 24);
-				ie.uid = load_be<uint32_t>(p + 28);
-				ie.gid = load_be<uint32_t>(p + 32);
+//				ie.uid = load_be<uint32_t>(p + 28);
+//				ie.gid = load_be<uint32_t>(p + 32);
 				ie.size = load_be<uint32_t>(p + 36);
 				ie.oid = object_id(p + 40);
-				ie.flags = load_be<uint16_t>(p + 60);
-				ie.name.assign(name_start, name_end);
+//				ie.flags = load_be<uint16_t>(p + 60);
 
-				pimpl->m_entries.push_back(ie);
+				string_view suffix;
+				if (starts_with(full_name, current_dir_name))
+				{
+					suffix = string_view(full_name.begin() + current_dir_name.size(), full_name.end());
+				}
+				else
+				{
+					current_dir = &pimpl->m_root;
+					current_dir_name.clear();
+					suffix = full_name;
+				}
+
+				size_t pos = suffix.find('/');
+				while (pos < suffix.size())
+				{
+					current_dir = &current_dir->dirs[suffix.substr(0, pos)];
+					current_dir_name.append(suffix.data(), suffix.data() + pos + 1);
+					suffix = suffix.substr(pos + 1);
+					pos = suffix.find('/');
+				}
+				ie.name.assign(suffix);
+
+				current_dir->files.push_back(ie);
+				++current_count;
 
 				p = n;
 			}
@@ -751,33 +786,65 @@ string_view git_wd::path() const
 
 #include "checkout_filter.h"
 
-void git_wd::status(std::map<std::string, file_status> & st)
+static git_wd::file_status check_file_status(string_view fname, object_id const & expected_oid)
 {
-	for (auto && entry: m_pimpl->m_entries)
+	file fin;
+	if (fin.try_open(fname, /*readonly=*/true))
 	{
-		std::string full_path = m_pimpl->m_path + "/" + entry.name;
-		file fin;
-		if (fin.try_open(full_path, /*readonly=*/true))
+		file_offset_t size;
+
 		{
-			file_offset_t size;
-
-			{
-				file::ifile fi(fin.seekg(0));
-				checkin_filter cf(fi);
-				size = stream_size(cf);
-			}
-
 			file::ifile fi(fin.seekg(0));
 			checkin_filter cf(fi);
+			size = stream_size(cf);
+		}
 
-			if (sha1(gitdb::object_type::blob, size, cf) != entry.oid)
-				st[entry.name] = file_status::modified;
-		}
-		else
-		{
-			st[entry.name] = file_status::deleted;
-		}
+		file::ifile fi(fin.seekg(0));
+		checkin_filter cf(fi);
+
+		if (sha1(gitdb::object_type::blob, size, cf) != expected_oid)
+			return git_wd::file_status::modified;
 	}
+	else
+	{
+		return git_wd::file_status::deleted;
+	}
+
+	return git_wd::file_status::none;
+}
+
+static void status_dir(std::map<std::string, git_wd::file_status> & st, std::string & current_name, size_t name_prefix_len, index_dir const & d)
+{
+	size_t old_name_len = current_name.size();
+	for (auto && file : d.files)
+	{
+		if ((file.mode & 0xe000) == 0xe000)
+			continue;
+
+		current_name += file.name;
+
+		git_wd::file_status fs = check_file_status(current_name, file.oid);
+		if (fs != git_wd::file_status::none)
+			st[current_name.substr(name_prefix_len)] = fs;
+
+		current_name.resize(old_name_len);
+	}
+
+	for (auto && kv: d.dirs)
+	{
+		current_name += kv.first;
+		current_name += "/";
+		status_dir(st, current_name, name_prefix_len, kv.second);
+		current_name.resize(old_name_len);
+	}
+}
+
+void git_wd::status(std::map<std::string, file_status> & st)
+{
+	assert(!m_pimpl->m_path.empty());
+
+	std::string current_name = m_pimpl->m_path + "/";
+	status_dir(st, current_name, current_name.size(), m_pimpl->m_root);
 }
 
 object_id sha1(gitdb::object_type type, file_offset_t size, istream & s)
