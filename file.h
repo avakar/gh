@@ -86,12 +86,18 @@ private:
 class dir_enum_proxy
 {
 public:
+	struct dir_entry
+	{
+		string_view name;
+		uint32_t mtime;
+	};
+
 	class iterator
 	{
 	public:
 		explicit iterator(dir_enum_proxy * pimpl);
 
-		std::string operator*() const;
+		dir_entry operator*() const;
 		iterator & operator++();
 		iterator operator++(int);
 
@@ -121,6 +127,8 @@ public:
 private:
 	struct impl;
 	impl * m_pimpl;
+
+	static bool find_next(impl & pimpl);
 
 	dir_enum_proxy(dir_enum_proxy const &);
 	dir_enum_proxy & operator=(dir_enum_proxy const &);

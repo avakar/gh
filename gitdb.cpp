@@ -413,8 +413,8 @@ gitdb::object gitdb::get_object(object_id oid)
 	{
 		if (!m_pimpl->m_packs_loaded)
 		{
-			for (auto && name : listdir(m_pimpl->m_path + "/objects/pack", "*.idx"))
-				m_pimpl->load_pack(m_pimpl->m_path + "/objects/pack/" + name.substr(0, name.size() - 4));
+			for (auto && de: listdir(m_pimpl->m_path + "/objects/pack", "*.idx"))
+				m_pimpl->load_pack(m_pimpl->m_path + "/objects/pack/" + de.name.substr(0, de.name.size() - 4));
 			m_pimpl->m_packs_loaded = true;
 		}
 
@@ -629,13 +629,13 @@ struct index_entry
 	uint32_t size;
 	object_id oid;
 //	uint16_t flags;
-	std::string name;
+//	std::string name;
 };
 
 struct index_dir
 {
 	std::map<std::string, index_dir> dirs;
-	std::vector<index_entry> files;
+	std::map<std::string, index_entry> files;
 };
 
 struct git_wd::impl
@@ -747,9 +747,9 @@ void git_wd::open(gitdb & db, string_view path)
 					suffix = suffix.substr(pos + 1);
 					pos = suffix.find('/');
 				}
-				ie.name.assign(suffix);
+				//ie.name.assign(suffix);
 
-				current_dir->files.push_back(ie);
+				current_dir->files[suffix] = ie;
 				++current_count;
 
 				p = n;
@@ -816,14 +816,22 @@ static git_wd::file_status check_file_status(string_view fname, object_id const 
 static void status_dir(std::map<std::string, git_wd::file_status> & st, std::string & current_name, size_t name_prefix_len, index_dir const & d)
 {
 	size_t old_name_len = current_name.size();
-	for (auto && file : d.files)
+
+	std::map<std::string, uint32_t> curdirstate;
+	for (auto && de: listdir(current_name))
+		curdirstate[de.name] = de.mtime;
+
+	for (auto && kv: d.files)
 	{
-		if ((file.mode & 0xe000) == 0xe000)
+		if ((kv.second.mode & 0xe000) == 0xe000)
 			continue;
 
-		current_name += file.name;
+		if (curdirstate[kv.first] == kv.second.mtime)
+			continue;
 
-		git_wd::file_status fs = check_file_status(current_name, file.oid);
+		current_name += kv.first;
+
+		git_wd::file_status fs = check_file_status(current_name, kv.second.oid);
 		if (fs != git_wd::file_status::none)
 			st[current_name.substr(name_prefix_len)] = fs;
 

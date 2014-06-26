@@ -110,7 +110,36 @@ struct dir_enum_proxy::impl
 {
 	HANDLE hFind;
 	WIN32_FIND_DATAW wfd;
+
+	std::string current_name;
+
+	impl()
+		: hFind(0)
+	{
+	}
+
+	~impl()
+	{
+		if (hFind)
+			FindClose(hFind);
+	}
 };
+
+bool dir_enum_proxy::find_next(impl & pimpl)
+{
+	if (!::FindNextFileW(pimpl.hFind, &pimpl.wfd))
+	{
+		DWORD dwError = ::GetLastError();
+		if (dwError != ERROR_NO_MORE_FILES)
+			throw windows_error(dwError);
+		return false;
+	}
+	else
+	{
+		pimpl.current_name = from_utf16(pimpl.wfd.cFileName);
+		return true;
+	}
+}
 
 dir_enum_proxy::dir_enum_proxy(string_view path, string_view mask)
 	: m_pimpl(0)
@@ -124,6 +153,20 @@ dir_enum_proxy::dir_enum_proxy(string_view path, string_view mask)
 		if (dwError == ERROR_NO_MORE_FILES)
 			return;
 		throw windows_error(dwError);
+	}
+
+	if ((pimpl->wfd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0)
+	{
+		pimpl->current_name = from_utf16(pimpl->wfd.cFileName);
+	}
+	else
+	{
+		do
+		{
+			if (!this->find_next(*pimpl))
+				return;
+		}
+		while (pimpl->wfd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY);
 	}
 
 	m_pimpl = pimpl.release();
@@ -159,25 +202,31 @@ dir_enum_proxy::iterator::iterator(dir_enum_proxy * pimpl)
 {
 }
 
-std::string dir_enum_proxy::iterator::operator*() const
+dir_enum_proxy::dir_entry dir_enum_proxy::iterator::operator*() const
 {
 	assert(m_pimpl->m_pimpl);
-	return from_utf16(m_pimpl->m_pimpl->wfd.cFileName);
+
+	dir_entry res;
+	res.name = m_pimpl->m_pimpl->current_name;
+	res.mtime = (uint32_t)(((uint64_t const &)m_pimpl->m_pimpl->wfd.ftLastWriteTime - 116444736000000000) / 10000000);
+	return res;
 }
 
 dir_enum_proxy::iterator & dir_enum_proxy::iterator::operator++()
 {
 	assert(m_pimpl->m_pimpl);
-	if (!::FindNextFileW(m_pimpl->m_pimpl->hFind, &m_pimpl->m_pimpl->wfd))
-	{
-		DWORD dwError = ::GetLastError();
-		if (dwError != ERROR_NO_MORE_FILES)
-			throw windows_error(dwError);
 
-		FindClose(m_pimpl->m_pimpl->hFind);
-		delete m_pimpl->m_pimpl;
-		m_pimpl->m_pimpl = 0;
+	do
+	{
+		if (!dir_enum_proxy::find_next(*m_pimpl->m_pimpl))
+		{
+			delete m_pimpl->m_pimpl;
+			m_pimpl->m_pimpl = 0;
+			break;
+		}
 	}
+	while (m_pimpl->m_pimpl->wfd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY);
+
 	return *this;
 }
 
