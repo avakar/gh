@@ -207,6 +207,10 @@ static int gh_status(args_t & args)
 		return 2;
 	}
 
+	std::string real_ref;
+	db.get_ref("HEAD", real_ref);
+	std::cout << "on branch " << real_ref << "\n\n";
+
 	std::map<std::string, git_wd::file_status> fs;
 	wd.status(fs);
 
