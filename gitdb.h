@@ -102,7 +102,11 @@ public:
 		none,
 	};
 
-	void status(std::map<std::string, file_status> & st);
+	typedef std::map<std::string, file_status> status_t;
+
+	void status(status_t & st);
+	void commit_status(status_t & st, object_id const & commit_oid);
+	void tree_status(status_t & st, object_id const & tree_oid);
 
 	string_view path() const;
 

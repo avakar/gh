@@ -885,3 +885,101 @@ object_id sha1(gitdb::object obj)
 {
 	return sha1(obj.type, obj.size, *obj.content);
 }
+
+static void tree_status_impl(git_wd::status_t & st, std::string & st_prefix, gitdb & db, gitdb::tree_t const & tree, index_dir const & dir)
+{
+	size_t old_prefix_len = st_prefix.size();
+
+	std::map<std::string, index_dir>::const_iterator dir_it = dir.dirs.begin();
+	std::map<std::string, index_entry>::const_iterator file_it = dir.files.begin();
+
+	for (auto && te : tree)
+	{
+		if ((te.mode & 0xe000) == 0xe000)
+		{
+			// gitlink
+		}
+		else if ((te.mode & 0xe000) == 0x4000)
+		{
+			// dir
+			for (; dir_it->first < te.name; ++dir_it)
+			{
+				st_prefix.append(dir_it->first);
+				st[st_prefix] = git_wd::file_status::added;
+				st_prefix.resize(old_prefix_len);
+			}
+
+			if (dir_it->first == te.name)
+			{
+				st_prefix.append(te.name);
+				st_prefix.append("/");
+				tree_status_impl(st, st_prefix, db, db.get_tree(te.oid), dir_it->second);
+				st_prefix.resize(old_prefix_len);
+
+				++dir_it;
+			}
+			else
+			{
+				st_prefix.append(te.name);
+				st[st_prefix] = git_wd::file_status::deleted;
+				st_prefix.resize(old_prefix_len);
+			}
+		}
+		else
+		{
+			// file
+			for (; file_it->first < te.name; ++file_it)
+			{
+				st_prefix.append(file_it->first);
+				st[st_prefix] = git_wd::file_status::added;
+				st_prefix.resize(old_prefix_len);
+			}
+
+			if (file_it->first == te.name)
+			{
+				if (file_it->second.oid != te.oid)
+				{
+					st_prefix.append(te.name);
+					st[st_prefix] = git_wd::file_status::modified;
+					st_prefix.resize(old_prefix_len);
+				}
+
+				++file_it;
+			}
+			else
+			{
+				st_prefix.append(te.name);
+				st[st_prefix] = git_wd::file_status::deleted;
+				st_prefix.resize(old_prefix_len);
+			}
+		}
+	}
+
+	for (; dir_it != dir.dirs.end(); ++dir_it)
+	{
+		st_prefix.append(dir_it->first);
+		st[st_prefix] = git_wd::file_status::deleted;
+		st_prefix.resize(old_prefix_len);
+	}
+
+	for (; file_it != dir.files.end(); ++file_it)
+	{
+		st_prefix.append(file_it->first);
+		st[st_prefix] = git_wd::file_status::deleted;
+		st_prefix.resize(old_prefix_len);
+	}
+}
+
+void git_wd::tree_status(status_t & st, object_id const & tree_oid)
+{
+	gitdb::tree_t tree = m_pimpl->m_db->get_tree(tree_oid);
+
+	std::string st_prefix;
+	tree_status_impl(st, st_prefix, *m_pimpl->m_db, tree, m_pimpl->m_root);
+}
+
+void git_wd::commit_status(status_t & st, object_id const & commit_oid)
+{
+	gitdb::commit_t c = m_pimpl->m_db->get_commit(commit_oid);
+	this->tree_status(st, c.tree_oid);
+}

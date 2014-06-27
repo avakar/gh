@@ -77,6 +77,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="checkout_filter.cpp" />
+    <ClCompile Include="cmdline.cpp" />
     <ClCompile Include="file.cpp" />
     <ClCompile Include="gitdb.cpp" />
     <ClCompile Include="main.cpp" />
@@ -89,6 +90,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="checkout_filter.h" />
+    <ClInclude Include="cmdline.h" />
     <ClInclude Include="file.h" />
     <ClInclude Include="gitdb.h" />
     <ClInclude Include="object_id.h" />

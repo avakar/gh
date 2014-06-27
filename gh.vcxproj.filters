@@ -11,6 +11,7 @@
     <ClCompile Include="object_id.cpp" />
     <ClCompile Include="sha1.cpp" />
     <ClCompile Include="checkout_filter.cpp" />
+    <ClCompile Include="cmdline.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="file.h" />
@@ -23,5 +24,6 @@
     <ClInclude Include="object_id.h" />
     <ClInclude Include="sha1.h" />
     <ClInclude Include="checkout_filter.h" />
+    <ClInclude Include="cmdline.h" />
   </ItemGroup>
 </Project>

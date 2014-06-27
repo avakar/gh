@@ -4,6 +4,42 @@
 #include <time.h>
 #include <iostream>
 
+#include "cmdline.h"
+
+namespace gh_opts {
+	enum
+	{
+		cmd,
+		repo,
+		time,
+		bare,
+		wd_dir,
+		ref,
+	};
+};
+
+namespace gh_subparser {
+	enum
+	{
+		none,
+		init,
+		test_checkout,
+		status,
+	};
+}
+
+static cmdline_entry const cmdline_entries[] =
+{
+	{ gh_opts::cmd, 0, "command", 1, 0, "the command to execute" },
+	{ gh_opts::repo, 'R', "--repo", 1, 0, "the path to the repository or inside a working dir" },
+	{ gh_opts::time, 0, "--time", 0, 0, "print the total time spent executing gh" },
+
+	{ gh_opts::bare, 0, "--bare", 0, gh_subparser::init, "create a bare repo" },
+
+	{ gh_opts::wd_dir, 0, "wd_dir", 0, gh_subparser::test_checkout, "" },
+	{ gh_opts::ref, 0, "ref", 0, gh_subparser::test_checkout, "" },
+};
+
 void print_stream(istream & s)
 {
 	stream_reader sr(s);
@@ -42,95 +78,10 @@ static void checkout_tree(gitdb & db, string_view dir, gitdb::tree_t const & t)
 	}
 }
 
-typedef std::vector<std::string> args_t;
-
-static std::string parse_cmd(args_t & args)
+static int gh_init(cmdline & args)
 {
-	bool parse_switches = true;
-	for (size_t i = 0; i < args.size(); ++i)
-	{
-		string_view arg = args[i];
-
-		if (arg == "--")
-		{
-			parse_switches = false;
-		}
-		else if (!parse_switches || !starts_with(arg, "-"))
-		{
-			std::string res = arg;
-			args.erase(args.begin() + i);
-			return res;
-		}
-	}
-
-	return "help";
-}
-
-static bool pop_arg_value(std::string & res, args_t & args, char short_name, string_view long_name)
-{
-	for (size_t i = 0; i < args.size(); ++i)
-	{
-		string_view arg = args[i];
-		if (arg == "--")
-			return false;
-
-		if (arg == long_name || (arg.size() == 2 && arg[0] == '-' && arg[1] == short_name))
-		{
-			if (i + 1 >= args.size())
-				return false;
-
-			res = args[i + 1];
-			args.erase(args.begin() + i, args.begin() + i + 2);
-			return true;
-		}
-	}
-
-	return false;
-}
-
-static std::string pop_arg_value(args_t & args, char short_name, string_view long_name , string_view def)
-{
-	std::string res;
-	if (!pop_arg_value(res, args, short_name, long_name))
-		return def;
-	return res;
-}
-
-static bool pop_switch(args_t & args, char short_name, string_view long_name)
-{
-	for (size_t i = 0; i < args.size(); ++i)
-	{
-		std::string & arg = args[i];
-		if (arg == "--")
-			return false;
-
-		if (arg == long_name)
-		{
-			args.erase(args.begin() + i);
-			return true;
-		}
-
-		if (starts_with(arg, "-") && !starts_with(arg, "--"))
-		{
-			auto it = std::find(arg.begin(), arg.end(), short_name);
-			if (it != arg.end())
-			{
-				if (arg.size() == 2)
-					args.erase(args.begin() + i);
-				else
-					arg.erase(it);
-				return true;
-			}
-		}
-	}
-
-	return false;
-}
-
-static int gh_init(args_t & args)
-{
-	std::string repo_arg = pop_arg_value(args, 'R', "--repo", ".");
-	bool bare = pop_switch(args, 0, "--bare");
+	std::string repo_arg = args.pop_string(gh_opts::repo, ".");
+	bool bare = args.pop_switch(gh_opts::bare);
 
 	if (!bare)
 	{
@@ -151,33 +102,6 @@ static int gh_init(args_t & args)
 	return 0;
 }
 
-/*static std::string find_repo(string_view path)
-{
-	while (!path.empty())
-	{
-		std::string nonbare_path = path + "/.git";
-		if (file::is_directory(nonbare_path))
-			return nonbare_path;
-
-		if (file::is_file(path + "/HEAD") && file::is_directory(path + "/objects") && file::is_directory(path + "/refs"))
-			return path;
-
-		path = get_path_head(path);
-	}
-
-	return path;
-}
-
-static bool open_repo(gitdb & db, string_view path)
-{
-	std::string repo_path = find_repo(path);
-	if (repo_path.empty())
-		return false;
-
-	db.open(repo_path);
-	return true;
-}*/
-
 static bool open_wd(gitdb & db, git_wd & wd, string_view path)
 {
 	while (!path.empty())
@@ -193,11 +117,9 @@ static bool open_wd(gitdb & db, git_wd & wd, string_view path)
 	return false;
 }
 
-#include "sha1.h"
-
-static int gh_status(args_t & args)
+static int gh_status(cmdline & args)
 {
-	std::string repo_arg = pop_arg_value(args, 'R', "--repo", ".");
+	std::string repo_arg = args.pop_string(gh_opts::repo, ".");
 
 	gitdb db;
 	git_wd wd;
@@ -208,16 +130,24 @@ static int gh_status(args_t & args)
 	}
 
 	std::string real_ref;
-	db.get_ref("HEAD", real_ref);
+	object_id head_oid = db.get_ref("HEAD", real_ref);
 	std::cout << "on branch " << real_ref << "\n\n";
 
 	std::map<std::string, git_wd::file_status> fs;
+	wd.commit_status(fs, head_oid);
+	for (auto && kv : fs)
+	{
+		char stati[] = "ADM";
+		std::cout << stati[static_cast<int>(kv.second)] << " " << kv.first << "\n";
+	}
+	std::cout << "\n";
+
+	fs.clear();
 	wd.status(fs);
 
 	for (auto && kv: fs)
 	{
 		char stati[] = "ADM";
-
 		std::cout << stati[static_cast<int>(kv.second)] << " " << kv.first << "\n";
 	}
 
@@ -246,10 +176,10 @@ private:
 
 int main(int argc, char * argv[])
 {
-	args_t args(&argv[1], &argv[argc]);
-	std::string cmd = parse_cmd(args);
+	cmdline args(cmdline_entries, std::end(cmdline_entries), argc - 1, argv + 1);
 
-	bool profile = pop_switch(args, 0, "--time");
+	bool profile = args.pop_switch(gh_opts::time);
+	std::string cmd = args.pop_string(gh_opts::cmd);
 
 	try
 	{
@@ -261,11 +191,14 @@ int main(int argc, char * argv[])
 		}
 		else if (cmd == "test-checkout")
 		{
+			args.set_subparser(gh_subparser::test_checkout);
+
 			gitdb db0;
-			db0.open(args[0]);
-			object_id head_oid = db0.get_ref(args[1]);
+			db0.open(args.pop_string(gh_opts::repo, "."));
+
+			object_id head_oid = db0.get_ref(args.pop_string(gh_opts::ref));
 			gitdb::commit_t cc = db0.get_commit(head_oid);
-			checkout_tree(db0, args[2], db0.get_tree(cc.tree_oid));
+			checkout_tree(db0, args.pop_string(gh_opts::wd_dir), db0.get_tree(cc.tree_oid));
 			return 0;
 		}
 		else if (cmd == "st" || cmd == "status")
