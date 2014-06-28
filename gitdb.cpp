@@ -813,10 +813,22 @@ static git_wd::file_status check_file_status(string_view fname, object_id const 
 	return git_wd::file_status::none;
 }
 
+static bool compare_tree_objects(string_view lname, uint32_t lmode, string_view rname, uint32_t rmode)
+{
+	size_t clen = (std::min)(lname.size(), rname.size());
+	int r = memcmp(lname.data(), rname.data(), clen);
+	if (r != 0)
+		return r < 0;
+
+	return (lname.size() == clen && (lmode & 0xe000) == 0x4000? '/': lname[clen]) < (rname.size() == clen && (rmode & 0xe000) == 0x4000? '/': rname[clen]);
+}
+
 static void status_dir(std::map<std::string, git_wd::file_status> & st, std::string & current_path_prefix, std::string & current_name, index_dir const & d)
 {
 	auto dir_content = listdir(current_path_prefix);
-	std::sort(dir_content.begin(), dir_content.end(), [](directory_entry const & lhs, directory_entry const & rhs) { return lhs.name < rhs.name; });
+	std::sort(dir_content.begin(), dir_content.end(), [](directory_entry const & lhs, directory_entry const & rhs) {
+		return compare_tree_objects(lhs.name, lhs.mode, rhs.name, rhs.mode);
+	});
 
 	std::map<std::string, index_dir>::const_iterator dir_it = d.dirs.begin();
 	std::map<std::string, index_entry>::const_iterator file_it = d.files.begin();
@@ -1139,7 +1151,9 @@ static object_id make_stage_tree_impl(git_wd::stage_tree & st, index_dir & d)
 		tree.push_back(te);
 	}
 
-	std::sort(tree.begin(), tree.end(), [](gitdb::tree_entry_t const & lhs, gitdb::tree_entry_t const & rhs) { return lhs.name < rhs.name; });
+	std::sort(tree.begin(), tree.end(), [](gitdb::tree_entry_t const & lhs, gitdb::tree_entry_t const & rhs) {
+		return compare_tree_objects(lhs.name, lhs.mode, rhs.name, rhs.mode);
+	});
 
 	std::vector<uint8_t> tree_obj;
 	for (gitdb::tree_entry_t const & te: tree)
