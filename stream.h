@@ -64,4 +64,16 @@ void store_be(uint8_t * p, T v)
 	}
 }
 
+class mem_istream
+	: public istream
+{
+public:
+	mem_istream(uint8_t const * first, uint8_t const * last);
+	size_t read(uint8_t * p, size_t capacity) override;
+
+private:
+	uint8_t const * m_first;
+	uint8_t const * m_last;
+};
+
 #endif // STREAM_H

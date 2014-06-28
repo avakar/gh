@@ -112,3 +112,16 @@ file_offset_t stream_size(istream & s)
 	}
 	return res;
 }
+
+mem_istream::mem_istream(uint8_t const * first, uint8_t const * last)
+	: m_first(first), m_last(last)
+{
+}
+
+size_t mem_istream::read(uint8_t * p, size_t capacity)
+{
+	size_t len = (std::min)(capacity, (size_t)(m_last - m_first));
+	std::copy(m_first, m_first + len, p);
+	m_first += len;
+	return len;
+}
