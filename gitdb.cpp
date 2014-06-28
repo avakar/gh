@@ -1086,6 +1086,7 @@ void tree_status_impl(git_wd::status_t & st, gitdb & db, git_wd::stage_tree cons
 			else if ((stage_it->mode & 0xe000) == 0x4000 && stage_it->oid != db_it->oid)
 			{
 				path_prefix.append(stage_it->name);
+				path_prefix.append("/");
 				tree_status_impl(st, db, stree, path_prefix, stage_it->oid, db_it->oid);
 				path_prefix.resize(path_prefix_len);
 			}
