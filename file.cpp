@@ -202,13 +202,14 @@ dir_enum_proxy::iterator::iterator(dir_enum_proxy * pimpl)
 {
 }
 
-dir_enum_proxy::dir_entry dir_enum_proxy::iterator::operator*() const
+directory_entry dir_enum_proxy::iterator::operator*() const
 {
 	assert(m_pimpl->m_pimpl);
 
-	dir_entry res;
+	directory_entry res;
 	res.name = m_pimpl->m_pimpl->current_name;
 	res.mtime = (uint32_t)(((uint64_t const &)m_pimpl->m_pimpl->wfd.ftLastWriteTime - 116444736000000000) / 10000000);
+	res.mode = 0x8000;
 	return res;
 }
 
@@ -340,4 +341,47 @@ bool file::is_directory(string_view path)
 	}
 
 	return (attrs & FILE_ATTRIBUTE_DIRECTORY) != 0;
+}
+
+std::vector<directory_entry> listdir(string_view path, string_view mask)
+{
+	std::vector<directory_entry> res;
+
+	WIN32_FIND_DATAW wfd;
+	HANDLE hFind = ::FindFirstFileExW(to_utf16(path.to_string() + "/" + mask.to_string()).c_str(), FindExInfoBasic, &wfd, FindExSearchNameMatch, 0, 0);
+	if (hFind == INVALID_HANDLE_VALUE)
+	{
+		DWORD dwError = ::GetLastError();
+		if (dwError == ERROR_NO_MORE_FILES)
+			return res;
+		throw windows_error(dwError);
+	}
+
+	for (;;)
+	{
+		if ((wfd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0 || wfd.cFileName[0] != '.' || (wfd.cFileName[1] != 0 && (wfd.cFileName[1] != '.' || wfd.cFileName[2] != 0)))
+		{
+			res.emplace_back(
+				from_utf16(wfd.cFileName),
+				(uint32_t)(((uint64_t const &)wfd.ftLastWriteTime - 116444736000000000) / 10000000),
+				(wfd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)? 0x4000: 0x8000);
+		}
+
+		if (!::FindNextFileW(hFind, &wfd))
+		{
+			DWORD dwError = ::GetLastError();
+			::FindClose(hFind);
+			if (dwError == ERROR_NO_MORE_FILES)
+				return res;
+			throw windows_error(dwError);
+		}
+	}
+}
+
+dir_entry_type directory_entry::type() const
+{
+	if ((mode & 0xe000) == 0x4000)
+		return dir_entry_type::directory;
+	else
+		return dir_entry_type::file;
 }

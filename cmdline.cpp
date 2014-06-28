@@ -82,6 +82,12 @@ cmdline::cmdline(cmdline_entry const * entry_first, cmdline_entry const * entry_
 		if (!handled)
 			m_additional_opts.push_back(arg);
 	}
+
+	for (cmdline_entry const * entry = entry_first; entry != entry_last; ++entry)
+	{
+		if (!entry->def.empty() && m_opts.find(entry->id) == m_opts.end())
+			m_opts[entry->id].push_back(entry->def);
+	}
 }
 
 size_t cmdline::has_arg(int id) const

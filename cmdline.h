@@ -10,6 +10,7 @@ struct cmdline_entry
 	int id;
 	char short_name;
 	string_view long_name;
+	string_view def;
 	int arg_count;
 	int subparser;
 	string_view desc;

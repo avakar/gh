@@ -83,21 +83,39 @@ private:
 	file & operator=(file const &);
 };
 
+enum class dir_entry_type
+{
+	directory,
+	file,
+};
+
+struct directory_entry
+{
+	std::string name;
+	uint32_t mtime;
+	uint32_t mode;
+
+	directory_entry()
+	{
+	}
+
+	directory_entry(std::string name, uint32_t mtime, uint32_t mode)
+		: name(std::move(name)), mtime(mtime), mode(mode)
+	{
+	}
+
+	dir_entry_type type() const;
+};
+
 class dir_enum_proxy
 {
 public:
-	struct dir_entry
-	{
-		string_view name;
-		uint32_t mtime;
-	};
-
 	class iterator
 	{
 	public:
 		explicit iterator(dir_enum_proxy * pimpl);
 
-		dir_entry operator*() const;
+		directory_entry operator*() const;
 		iterator & operator++();
 		iterator operator++(int);
 
@@ -134,10 +152,12 @@ private:
 	dir_enum_proxy & operator=(dir_enum_proxy const &);
 };
 
-inline dir_enum_proxy listdir(string_view path, string_view mask = "*")
+inline dir_enum_proxy enumdir(string_view path, string_view mask = "*")
 {
 	return dir_enum_proxy(path, mask);
 }
+
+std::vector<directory_entry> listdir(string_view path, string_view mask = "*");
 
 bool make_directory(string_view path);
 

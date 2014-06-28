@@ -5,6 +5,7 @@
 #include <iostream>
 
 #include "cmdline.h"
+#include "console.h"
 
 namespace gh_opts {
 	enum
@@ -30,14 +31,14 @@ namespace gh_subparser {
 
 static cmdline_entry const cmdline_entries[] =
 {
-	{ gh_opts::cmd, 0, "command", 1, 0, "the command to execute" },
-	{ gh_opts::repo, 'R', "--repo", 1, 0, "the path to the repository or inside a working dir" },
-	{ gh_opts::time, 0, "--time", 0, 0, "print the total time spent executing gh" },
+	{ gh_opts::cmd, 0, "command", "", 1, 0, "the command to execute" },
+	{ gh_opts::repo, 'R', "--repo", ".", 1, 0, "the path to the repository or inside a working dir" },
+	{ gh_opts::time, 0, "--time", "", 0, 0, "print the total time spent executing gh" },
 
-	{ gh_opts::bare, 0, "--bare", 0, gh_subparser::init, "create a bare repo" },
+	{ gh_opts::bare, 0, "--bare", "", 0, gh_subparser::init, "create a bare repo" },
 
-	{ gh_opts::wd_dir, 0, "wd_dir", 0, gh_subparser::test_checkout, "" },
-	{ gh_opts::ref, 0, "ref", 0, gh_subparser::test_checkout, "" },
+	{ gh_opts::wd_dir, 0, "wd_dir", "", 0, gh_subparser::test_checkout, "" },
+	{ gh_opts::ref, 0, "ref", "", 0, gh_subparser::test_checkout, "" },
 };
 
 void print_stream(istream & s)
@@ -80,7 +81,7 @@ static void checkout_tree(gitdb & db, string_view dir, gitdb::tree_t const & t)
 
 static int gh_init(cmdline & args)
 {
-	std::string repo_arg = args.pop_string(gh_opts::repo, ".");
+	std::string repo_arg = args.pop_string(gh_opts::repo);
 	bool bare = args.pop_switch(gh_opts::bare);
 
 	if (!bare)
@@ -117,9 +118,21 @@ static bool open_wd(gitdb & db, git_wd & wd, string_view path)
 	return false;
 }
 
+static void print_status(std::map<std::string, git_wd::file_status> const & fs, bool untracked)
+{
+	for (auto && kv : fs)
+	{
+		char const * stati = untracked? "?DM": "ADM";
+		uint8_t const colors[] = { untracked? 0xe: 0xa, 0xa, 0xc };
+
+		console_color_guard concolor(colors[static_cast<int>(kv.second)]);
+		std::cout << stati[static_cast<int>(kv.second)] << " " << kv.first << "\n";
+	}
+}
+
 static int gh_status(cmdline & args)
 {
-	std::string repo_arg = args.pop_string(gh_opts::repo, ".");
+	std::string repo_arg = args.pop_string(gh_opts::repo);
 
 	gitdb db;
 	git_wd wd;
@@ -131,25 +144,20 @@ static int gh_status(cmdline & args)
 
 	std::string real_ref;
 	object_id head_oid = db.get_ref("HEAD", real_ref);
-	std::cout << "on branch " << real_ref << "\n\n";
+	std::cout << "B " << real_ref << "\n";
 
 	std::map<std::string, git_wd::file_status> fs;
+
 	wd.commit_status(fs, head_oid);
-	for (auto && kv : fs)
+	if (!fs.empty())
 	{
-		char stati[] = "ADM";
-		std::cout << stati[static_cast<int>(kv.second)] << " " << kv.first << "\n";
+		print_status(fs, /*untracked=*/false);
+		std::cout << "\n";
+		fs.clear();
 	}
-	std::cout << "\n";
 
-	fs.clear();
 	wd.status(fs);
-
-	for (auto && kv: fs)
-	{
-		char stati[] = "ADM";
-		std::cout << stati[static_cast<int>(kv.second)] << " " << kv.first << "\n";
-	}
+	print_status(fs, /*untracked=*/true);
 
 	return 0;
 }

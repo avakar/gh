@@ -413,7 +413,7 @@ gitdb::object gitdb::get_object(object_id oid)
 	{
 		if (!m_pimpl->m_packs_loaded)
 		{
-			for (auto && de: listdir(m_pimpl->m_path + "/objects/pack", "*.idx"))
+			for (auto && de: enumdir(m_pimpl->m_path + "/objects/pack", "*.idx"))
 				m_pimpl->load_pack(m_pimpl->m_path + "/objects/pack/" + de.name.substr(0, de.name.size() - 4));
 			m_pimpl->m_packs_loaded = true;
 		}
@@ -813,37 +813,96 @@ static git_wd::file_status check_file_status(string_view fname, object_id const 
 	return git_wd::file_status::none;
 }
 
-static void status_dir(std::map<std::string, git_wd::file_status> & st, std::string & current_name, size_t name_prefix_len, index_dir const & d)
+static void status_dir(std::map<std::string, git_wd::file_status> & st, std::string & current_path_prefix, std::string & current_name, index_dir const & d)
 {
-	size_t old_name_len = current_name.size();
+	auto dir_content = listdir(current_path_prefix);
+	std::sort(dir_content.begin(), dir_content.end(), [](directory_entry const & lhs, directory_entry const & rhs) { return lhs.name < rhs.name; });
 
-	std::map<std::string, uint32_t> curdirstate;
-	for (auto && de: listdir(current_name))
-		curdirstate[de.name] = de.mtime;
+	std::map<std::string, index_dir>::const_iterator dir_it = d.dirs.begin();
+	std::map<std::string, index_entry>::const_iterator file_it = d.files.begin();
 
-	for (auto && kv: d.files)
+	size_t path_prefix_len = current_path_prefix.size();
+	size_t name_len = current_name.size();
+
+	for (directory_entry const & de: dir_content)
 	{
-		if ((kv.second.mode & 0xe000) == 0xe000)
-			continue;
+		for (; dir_it != d.dirs.end() && dir_it->first < de.name; ++dir_it)
+		{
+			current_name.append(dir_it->first);
+			st[current_name] = git_wd::file_status::deleted;
+			current_name.resize(name_len);
+		}
 
-		if (curdirstate[kv.first] == kv.second.mtime)
-			continue;
+		for (; file_it != d.files.end() && file_it->first < de.name; ++file_it)
+		{
+			current_name.append(file_it->first);
+			st[current_name] = git_wd::file_status::deleted;
+			current_name.resize(name_len);
+		}
 
-		current_name += kv.first;
+		if (dir_it != d.dirs.end() && dir_it->first == de.name)
+		{
+			current_name.append(dir_it->first);
+			if (de.type() == dir_entry_type::directory)
+			{
+				current_name.append("/");
+				current_path_prefix.append(dir_it->first);
+				current_path_prefix.append("/");
+				status_dir(st, current_path_prefix, current_name, dir_it->second);
+				current_path_prefix.resize(path_prefix_len);
+			}
+			else
+			{
+				st[current_name] = git_wd::file_status::modified;
+			}
+			current_name.resize(name_len);
 
-		git_wd::file_status fs = check_file_status(current_name, kv.second.oid);
-		if (fs != git_wd::file_status::none)
-			st[current_name.substr(name_prefix_len)] = fs;
+			++dir_it;
+		}
+		else if (file_it != d.files.end() && file_it->first == de.name)
+		{
+			if (de.type() == dir_entry_type::file)
+			{
+				if (file_it->second.mtime != de.mtime)
+				{
+					current_name.append(file_it->first);
+					current_path_prefix.append(file_it->first);
+					git_wd::file_status fs = check_file_status(current_path_prefix, file_it->second.oid);
+					if (fs != git_wd::file_status::none)
+						st[current_name] = fs;
+					current_path_prefix.resize(path_prefix_len);
+					current_name.resize(name_len);
+				}
+			}
+			else
+			{
+				current_name.append(file_it->first);
+				st[current_name] = git_wd::file_status::modified;
+				current_name.resize(name_len);
+			}
 
-		current_name.resize(old_name_len);
+			++file_it;
+		}
+		else
+		{
+			current_name.append(de.name);
+			st[current_name] = git_wd::file_status::added;
+			current_name.resize(name_len);
+		}
 	}
 
-	for (auto && kv: d.dirs)
+	for (; file_it != d.files.end(); ++file_it)
 	{
-		current_name += kv.first;
-		current_name += "/";
-		status_dir(st, current_name, name_prefix_len, kv.second);
-		current_name.resize(old_name_len);
+		current_name.append(file_it->first);
+		st[current_name] = git_wd::file_status::deleted;
+		current_name.resize(name_len);
+	}
+
+	for (; dir_it != d.dirs.end(); ++dir_it)
+	{
+		current_name.append(dir_it->first);
+		st[current_name] = git_wd::file_status::deleted;
+		current_name.resize(name_len);
 	}
 }
 
@@ -851,8 +910,9 @@ void git_wd::status(std::map<std::string, file_status> & st)
 {
 	assert(!m_pimpl->m_path.empty());
 
-	std::string current_name = m_pimpl->m_path + "/";
-	status_dir(st, current_name, current_name.size(), m_pimpl->m_root);
+	std::string current_path = m_pimpl->m_path + "/";
+	std::string current_name;
+	status_dir(st, current_path, current_name, m_pimpl->m_root);
 }
 
 object_id sha1(gitdb::object_type type, file_offset_t size, istream & s)
