@@ -16,8 +16,14 @@ public:
 	std::string base16() const;
 	uint8_t operator[](size_t i) const;
 
+	uint8_t const * begin() const;
+	uint8_t const * end() const;
+
 	friend bool operator==(object_id const & lhs, object_id const & rhs);
 	friend bool operator!=(object_id const & lhs, object_id const & rhs);
+
+	friend bool operator<(object_id const & lhs, object_id const & rhs);
+
 
 private:
 	uint8_t id[20];

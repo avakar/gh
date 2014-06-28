@@ -946,6 +946,8 @@ object_id sha1(gitdb::object obj)
 	return sha1(obj.type, obj.size, *obj.content);
 }
 
+#if 0
+
 static void tree_status_impl(git_wd::status_t & st, std::string & st_prefix, gitdb & db, gitdb::tree_t const & tree, index_dir const & dir)
 {
 	size_t old_prefix_len = st_prefix.size();
@@ -1038,8 +1040,147 @@ void git_wd::tree_status(status_t & st, object_id const & tree_oid)
 	tree_status_impl(st, st_prefix, *m_pimpl->m_db, tree, m_pimpl->m_root);
 }
 
+#else
+
+void tree_status_impl(git_wd::status_t & st, gitdb & db, git_wd::stage_tree const & stree, std::string & path_prefix, object_id const & stree_oid, object_id const & tree_oid)
+{
+	gitdb::tree_t const & db_tree = db.get_tree(tree_oid);
+	gitdb::tree_t const & stage_tree = stree.trees.find(stree_oid)->second;
+
+	gitdb::tree_t::const_iterator db_it = db_tree.begin();
+	gitdb::tree_t::const_iterator stage_it = stage_tree.begin();
+
+	size_t path_prefix_len = path_prefix.size();
+
+	while (db_it != db_tree.end())
+	{
+		while (stage_it != stage_tree.end() && stage_it->name < db_it->name)
+		{
+			path_prefix.append(stage_it->name);
+			st[path_prefix] = git_wd::file_status::added;
+			path_prefix.resize(path_prefix_len);
+			++stage_it;
+		}
+
+		if (stage_it != stage_tree.end() && stage_it->name == db_it->name)
+		{
+			if (stage_it->mode != db_it->mode
+				|| ((stage_it->mode & 0xe000) == 0x8000 && stage_it->oid != db_it->oid))
+			{
+				path_prefix.append(stage_it->name);
+				st[path_prefix] = git_wd::file_status::modified;
+				path_prefix.resize(path_prefix_len);
+			}
+			else if ((stage_it->mode & 0xe000) == 0x4000 && stage_it->oid != db_it->oid)
+			{
+				path_prefix.append(stage_it->name);
+				tree_status_impl(st, db, stree, path_prefix, stage_it->oid, db_it->oid);
+				path_prefix.resize(path_prefix_len);
+			}
+
+			++stage_it;
+		}
+		else
+		{
+			path_prefix.append(db_it->name);
+			st[path_prefix] = git_wd::file_status::deleted;
+			path_prefix.resize(path_prefix_len);
+		}
+
+		++db_it;
+	}
+
+	for (; stage_it != stage_tree.end(); ++stage_it)
+	{
+		path_prefix.append(stage_it->name);
+		st[path_prefix] = git_wd::file_status::added;
+		path_prefix.resize(path_prefix_len);
+	}
+}
+
+void git_wd::tree_status(status_t & st, object_id const & tree_oid)
+{
+	git_wd::stage_tree stage_tree;
+	this->make_stage_tree(stage_tree);
+
+	if (stage_tree.root_tree != tree_oid)
+	{
+		std::string path_prefix;
+		tree_status_impl(st, *m_pimpl->m_db, stage_tree, path_prefix, stage_tree.root_tree, tree_oid);
+	}
+}
+
+#endif
+
 void git_wd::commit_status(status_t & st, object_id const & commit_oid)
 {
 	gitdb::commit_t c = m_pimpl->m_db->get_commit(commit_oid);
 	this->tree_status(st, c.tree_oid);
+}
+
+static object_id make_stage_tree_impl(git_wd::stage_tree & st, index_dir & d)
+{
+	std::vector<gitdb::tree_entry_t> tree;
+	for (auto && kv: d.dirs)
+	{
+		gitdb::tree_entry_t te;
+		te.name = kv.first;
+		te.mode = 0x4000;
+		te.oid = make_stage_tree_impl(st, kv.second);
+		tree.push_back(te);
+	}
+
+	for (auto && kv: d.files)
+	{
+		gitdb::tree_entry_t te;
+		te.name = kv.first;
+		te.mode = kv.second.mode;
+		te.oid = kv.second.oid;
+		tree.push_back(te);
+	}
+
+	std::sort(tree.begin(), tree.end(), [](gitdb::tree_entry_t const & lhs, gitdb::tree_entry_t const & rhs) { return lhs.name < rhs.name; });
+
+	std::vector<uint8_t> tree_obj;
+	for (gitdb::tree_entry_t const & te: tree)
+	{
+		char mode_buf[32];
+		char * buf_end = mode_buf;
+		uint32_t mode = te.mode;
+		while (mode != 0)
+		{
+			static char const digits[] = "01234567";
+			*buf_end++ = digits[mode & 0x7];
+			mode >>= 3;
+		}
+
+		size_t entry_len = te.name.size() + 22 + (buf_end - mode_buf);
+		tree_obj.resize(tree_obj.size() + entry_len);
+
+		uint8_t * entry_start = tree_obj.data() + (tree_obj.size() - entry_len);
+
+		while (buf_end != mode_buf)
+			*entry_start++ = *--buf_end;
+		*entry_start++ = ' ';
+
+		std::copy(te.name.begin(), te.name.end(), entry_start);
+		entry_start += te.name.size();
+		*entry_start++ = 0;
+
+		std::copy(te.oid.begin(), te.oid.end(), entry_start);
+	}
+
+	gitdb::object obj;
+	obj.type = gitdb::object_type::tree;
+	obj.size = tree_obj.size();
+	obj.content = std::make_shared<mem_istream>(tree_obj.data(), tree_obj.data() + tree_obj.size());
+
+	object_id oid = sha1(obj);
+	st.trees[oid] = std::move(tree);
+	return oid;
+}
+
+void git_wd::make_stage_tree(stage_tree & st)
+{
+	st.root_tree = make_stage_tree_impl(st, m_pimpl->m_root);
 }

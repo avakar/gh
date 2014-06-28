@@ -58,6 +58,11 @@ bool operator!=(object_id const & lhs, object_id const & rhs)
 	return !(lhs == rhs);
 }
 
+bool operator<(object_id const & lhs, object_id const & rhs)
+{
+	return std::memcmp(lhs.id, rhs.id, sizeof lhs.id) < 0;
+}
+
 object_id sha1(string_view data)
 {
 	uint8_t hash[20];
@@ -70,4 +75,14 @@ object_id sha1(istream & s)
 	uint8_t hash[20];
 	sha1(hash, s);
 	return object_id(hash);
+}
+
+uint8_t const * object_id::begin() const
+{
+	return id;
+}
+
+uint8_t const * object_id::end() const
+{
+	return id + sizeof id;
 }

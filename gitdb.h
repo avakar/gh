@@ -108,6 +108,14 @@ public:
 	void commit_status(status_t & st, object_id const & commit_oid);
 	void tree_status(status_t & st, object_id const & tree_oid);
 
+	struct stage_tree
+	{
+		object_id root_tree;
+		std::map<object_id, gitdb::tree_t> trees;
+	};
+
+	void make_stage_tree(stage_tree & st);
+
 	string_view path() const;
 
 private:
