@@ -162,6 +162,8 @@ std::vector<directory_entry> listdir(string_view path, string_view mask = "*");
 
 bool make_directory(string_view path);
 
+int compare_filenames(string_view lhs, string_view rhs);
+
 string_view get_path_head(string_view path);
 string_view get_path_tail(string_view path);
 

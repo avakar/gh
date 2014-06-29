@@ -388,3 +388,39 @@ dir_entry_type directory_entry::type() const
 	else
 		return dir_entry_type::file;
 }
+
+struct UNICODE_STRING
+{
+	USHORT Length;
+	USHORT MaximumLength;
+	PWSTR  Buffer;
+};
+
+typedef LONG __stdcall RtlCompareUnicodeString_t(UNICODE_STRING const * String1, UNICODE_STRING const * String2, BOOLEAN CaseInSensitive);
+RtlCompareUnicodeString_t * g_RtlCompareUnicodeString = 0;
+
+int compare_filenames(string_view lhs, string_view rhs)
+{
+	// Normally, we'd use CompareStringOrdinal, but unfortunately, it's Vista+ only.
+
+	RtlCompareUnicodeString_t * RtlCompareUnicodeString = static_cast<RtlCompareUnicodeString_t * volatile &>(g_RtlCompareUnicodeString);
+	if (RtlCompareUnicodeString == 0)
+	{
+		HMODULE hNtdll = GetModuleHandleW(L"ntdll.dll");
+		RtlCompareUnicodeString = (RtlCompareUnicodeString_t *)GetProcAddress(hNtdll, "RtlCompareUnicodeString");
+		static_cast<RtlCompareUnicodeString_t * volatile &>(g_RtlCompareUnicodeString) = RtlCompareUnicodeString;
+	}
+
+	std::wstring wlhs = to_utf16(lhs);
+	std::wstring wrhs = to_utf16(rhs);
+
+	UNICODE_STRING ulhs;
+	ulhs.Buffer = (PWSTR)wlhs.data();
+	ulhs.Length = (USHORT)(wlhs.size() * 2);
+
+	UNICODE_STRING urhs;
+	urhs.Buffer = (PWSTR)wrhs.data();
+	urhs.Length = (USHORT)(wrhs.size() * 2);
+
+	return RtlCompareUnicodeString(&ulhs, &urhs, TRUE);
+}

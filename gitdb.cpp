@@ -848,35 +848,51 @@ static bool is_gitlink(uint32_t mode)
 	return (mode & 0xe000) == 0xe000;
 }
 
-static void status_dir(std::map<std::string, git_wd::file_status> & st, std::string & current_path_prefix, std::string & current_name, std::vector<index_entry> const & d)
+static int status_compare(string_view lhs, uint32_t lmode, string_view rhs, uint32_t rmode)
+{
+	int r = compare_filenames(lhs, rhs);
+	if (r != 0)
+		return r;
+	if (lmode == rmode)
+		return 0;
+	return lmode < rmode? -1: 1;
+}
+
+// We expect index entries here to be sorted using `compare_filenames` and then by `mode`.
+static void status_dir(std::map<std::string, git_wd::file_status> & st, std::string & current_path_prefix, std::string & current_name, std::vector<index_entry const *> const & d)
 {
 	auto dir_content = listdir(current_path_prefix);
 	std::sort(dir_content.begin(), dir_content.end(), [](directory_entry const & lhs, directory_entry const & rhs) {
-		return compare_tree_objects(lhs.name, is_dir(lhs.mode), rhs.name, is_dir(rhs.mode)) < 0;
+		return compare_filenames(lhs.name, rhs.name) < 0;
 	});
+
+	// There won't be duplicates (relative to `compare_filenames`) in `dir_content`, but
+	// there might be duplicates in `d` (e.g. "File" and "file" are distinct according
+	// to git's basename ordering, but are the same according to the Windows'
+	// case-insensitive ordering.
 
 	size_t path_prefix_len = current_path_prefix.size();
 	size_t name_len = current_name.size();
 
-	index_entry const * d_first = d.data();
-	index_entry const * d_last = d.data() + d.size();
+	index_entry const * const * d_first = d.data();
+	index_entry const * const * d_last = d.data() + d.size();
 
 	for (directory_entry const & de: dir_content)
 	{
-		int r = d_first == d_last? 1: compare_tree_objects(d_first->name, is_dir(d_first->mode), de.name, is_dir(de.mode));
+		int r = d_first == d_last? 1: compare_filenames((*d_first)->name, de.name);
 
 		for (; r < 0; ++d_first)
 		{
-			current_name.append(d_first->name);
+			current_name.append((*d_first)->name);
 			st[current_name] = git_wd::file_status::deleted;
 			current_name.resize(name_len);
 
-			r = d_first == d_last? 1: compare_tree_objects(d_first->name, is_dir(d_first->mode), de.name, is_dir(de.mode));
+			r = d_first == d_last? 1: compare_filenames((*d_first)->name, de.name);
 		}
 
 		if (r == 0)
 		{
-			if ((de.mode & 0xe000) == (d_first->mode & 0xe000))
+			if ((de.mode & 0xe000) == ((*d_first)->mode & 0xe000))
 			{
 				if (is_gitlink(de.mode))
 				{
@@ -884,23 +900,41 @@ static void status_dir(std::map<std::string, git_wd::file_status> & st, std::str
 				}
 				else if (is_dir(de.mode))
 				{
-					current_name.append(d_first->name);
+					// We search for the equal range in `d` here, since we'll have to merge
+					// all the distinct directories together.
+					index_entry const * const * d_next = d_first + 1;
+					while (d_next != d_last && status_compare((*d_next)->name, (*d_next)->mode, de.name, de.mode) == 0)
+						++d_next;
+
+					std::vector<index_entry const *> nested_entries;
+
+					for (index_entry const * const * cur = d_first; cur != d_next; ++cur)
+					{
+						for (index_entry const & ie: (*cur)->children)
+							nested_entries.push_back(&ie);
+					}
+
+					std::stable_sort(nested_entries.begin(), nested_entries.end(), [](index_entry const * lhs, index_entry const * rhs) {
+						return status_compare(lhs->name, lhs->mode, rhs->name, rhs->mode) < 0;
+					});
+
+					current_name.append((*d_first)->name);
 					current_name.append("/");
-					current_path_prefix.append(d_first->name);
+					current_path_prefix.append((*d_first)->name);
 					current_path_prefix.append("/");
-					status_dir(st, current_path_prefix, current_name, d_first->children);
+					status_dir(st, current_path_prefix, current_name, nested_entries);
 					current_path_prefix.resize(path_prefix_len);
 					current_name.resize(name_len);
 				}
 				else
 				{
-					if (d_first->mtime != de.mtime)
+					if ((*d_first)->mtime != de.mtime)
 					{
-						current_path_prefix.append(d_first->name);
-						git_wd::file_status fs = check_file_status(current_path_prefix, d_first->oid);
+						current_path_prefix.append((*d_first)->name);
+						git_wd::file_status fs = check_file_status(current_path_prefix, (*d_first)->oid);
 						if (fs != git_wd::file_status::none)
 						{
-							current_name.append(d_first->name);
+							current_name.append((*d_first)->name);
 							st[current_name] = fs;
 							current_name.resize(name_len);
 						}
@@ -910,7 +944,7 @@ static void status_dir(std::map<std::string, git_wd::file_status> & st, std::str
 			}
 			else
 			{
-				current_name.append(d_first->name);
+				current_name.append((*d_first)->name);
 				st[current_name] = git_wd::file_status::modified;
 			}
 
@@ -926,7 +960,7 @@ static void status_dir(std::map<std::string, git_wd::file_status> & st, std::str
 
 	for (; d_first != d_last; ++d_first)
 	{
-		current_name.append(d_first->name);
+		current_name.append((*d_first)->name);
 		st[current_name] = git_wd::file_status::deleted;
 		current_name.resize(name_len);
 	}
@@ -938,7 +972,16 @@ void git_wd::status(std::map<std::string, file_status> & st)
 
 	std::string current_path = m_pimpl->m_path + "/";
 	std::string current_name;
-	status_dir(st, current_path, current_name, m_pimpl->m_root);
+
+	std::vector<index_entry const *> root_entries;
+	root_entries.reserve(m_pimpl->m_root.size());
+	for (index_entry const & ie: m_pimpl->m_root)
+		root_entries.push_back(&ie);
+	std::stable_sort(root_entries.begin(), root_entries.end(), [](index_entry const * lhs, index_entry const * rhs) {
+		return status_compare(lhs->name, lhs->mode, rhs->name, rhs->mode) < 0;
+	});
+
+	status_dir(st, current_path, current_name, root_entries);
 }
 
 object_id sha1(gitdb::object_type type, file_offset_t size, istream & s)
