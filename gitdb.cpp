@@ -892,7 +892,9 @@ static void status_dir(std::map<std::string, git_wd::file_status> & st, std::str
 
 		if (r == 0)
 		{
-			if ((de.mode & 0xe000) == ((*d_first)->mode & 0xe000))
+			// Note that we can't tell if something is a symlink on Windows,
+			// so we need to filter that bit out.
+			if ((de.mode & 0xc000) == ((*d_first)->mode & 0xc000))
 			{
 				if (is_gitlink(de.mode))
 				{
@@ -925,6 +927,8 @@ static void status_dir(std::map<std::string, git_wd::file_status> & st, std::str
 					status_dir(st, current_path_prefix, current_name, nested_entries);
 					current_path_prefix.resize(path_prefix_len);
 					current_name.resize(name_len);
+
+					d_first = d_next - 1;
 				}
 				else
 				{
@@ -946,6 +950,7 @@ static void status_dir(std::map<std::string, git_wd::file_status> & st, std::str
 			{
 				current_name.append((*d_first)->name);
 				st[current_name] = git_wd::file_status::modified;
+				current_name.resize(name_len);
 			}
 
 			++d_first;
