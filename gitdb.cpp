@@ -629,21 +629,20 @@ struct index_entry
 	uint32_t size;
 	object_id oid;
 //	uint16_t flags;
-//	std::string name;
-};
+	std::string name;
+	std::vector<index_entry> children;
 
-struct index_dir
-{
-	std::map<std::string, index_dir> dirs;
-	std::map<std::string, index_entry> files;
+	index_entry()
+		: ctime(0), mtime(0), mode(0), size(0)
+	{
+	}
 };
 
 struct git_wd::impl
 {
 	gitdb * m_db;
 	std::string m_path;
-
-	index_dir m_root;
+	std::vector<index_entry> m_root;
 };
 
 git_wd::git_wd()
@@ -679,7 +678,7 @@ void git_wd::open(gitdb & db, string_view path)
 	uint32_t current_count = 0;
 
 	std::string current_dir_name;
-	index_dir * current_dir = &pimpl->m_root;
+	std::vector<index_entry> * current_dir = &pimpl->m_root;
 
 	std::vector<uint8_t> buffer;
 	while (current_count < entry_count)
@@ -742,14 +741,24 @@ void git_wd::open(gitdb & db, string_view path)
 				size_t pos = suffix.find('/');
 				while (pos < suffix.size())
 				{
-					current_dir = &current_dir->dirs[suffix.substr(0, pos)];
+					string_view c0 = suffix.substr(0, pos);
+					if (current_dir->empty() || current_dir->back().name != c0)
+					{
+						index_entry ie = {};
+						ie.name = c0;
+						ie.mode = 0x4000;
+						current_dir->push_back(std::move(ie));
+					}
+
+					current_dir = &current_dir->back().children;
 					current_dir_name.append(suffix.data(), suffix.data() + pos + 1);
 					suffix = suffix.substr(pos + 1);
 					pos = suffix.find('/');
 				}
-				//ie.name.assign(suffix);
 
-				current_dir->files[suffix] = ie;
+				ie.name.assign(suffix);
+
+				current_dir->push_back(std::move(ie));
 				++current_count;
 
 				p = n;
@@ -813,87 +822,94 @@ static git_wd::file_status check_file_status(string_view fname, object_id const 
 	return git_wd::file_status::none;
 }
 
-static bool compare_tree_objects(string_view lname, uint32_t lmode, string_view rname, uint32_t rmode)
+static int compare_tree_objects(string_view lname, bool is_ldir, string_view rname, bool is_rdir)
 {
 	size_t clen = (std::min)(lname.size(), rname.size());
 	int r = memcmp(lname.data(), rname.data(), clen);
 	if (r != 0)
-		return r < 0;
+		return r;
 
-	return (lname.size() == clen && (lmode & 0xe000) == 0x4000? '/': lname[clen]) < (rname.size() == clen && (rmode & 0xe000) == 0x4000? '/': rname[clen]);
+	return (lname.size() == clen? (is_ldir? '/': 0): lname[clen])
+		- (rname.size() == clen? (is_rdir? '/': 0): rname[clen]);
 }
 
-static void status_dir(std::map<std::string, git_wd::file_status> & st, std::string & current_path_prefix, std::string & current_name, index_dir const & d)
+static bool is_dir(uint32_t mode)
+{
+	return (mode & 0xe000) == 0x4000;
+}
+
+static bool is_gitlink(uint32_t mode)
+{
+	return (mode & 0xe000) == 0xe000;
+}
+
+static void status_dir(std::map<std::string, git_wd::file_status> & st, std::string & current_path_prefix, std::string & current_name, std::vector<index_entry> const & d)
 {
 	auto dir_content = listdir(current_path_prefix);
 	std::sort(dir_content.begin(), dir_content.end(), [](directory_entry const & lhs, directory_entry const & rhs) {
-		return compare_tree_objects(lhs.name, lhs.mode, rhs.name, rhs.mode);
+		return compare_tree_objects(lhs.name, (lhs.mode & 0xe000) == 0x4000, rhs.name, (rhs.mode & 0xe000) == 0x4000) < 0;
 	});
-
-	std::map<std::string, index_dir>::const_iterator dir_it = d.dirs.begin();
-	std::map<std::string, index_entry>::const_iterator file_it = d.files.begin();
 
 	size_t path_prefix_len = current_path_prefix.size();
 	size_t name_len = current_name.size();
 
+	index_entry const * d_first = d.data();
+	index_entry const * d_last = d.data() + d.size();
+
 	for (directory_entry const & de: dir_content)
 	{
-		for (; dir_it != d.dirs.end() && dir_it->first < de.name; ++dir_it)
+		int r = d_first == d_last? 1: compare_tree_objects(d_first->name, is_dir(d_first->mode), de.name, is_dir(de.mode));
+
+		for (; r < 0; ++d_first)
 		{
-			current_name.append(dir_it->first);
+			current_name.append(d_first->name);
 			st[current_name] = git_wd::file_status::deleted;
 			current_name.resize(name_len);
+
+			r = d_first == d_last? 1: compare_tree_objects(d_first->name, is_dir(d_first->mode), de.name, is_dir(de.mode));
 		}
 
-		for (; file_it != d.files.end() && file_it->first < de.name; ++file_it)
+		if (r == 0)
 		{
-			current_name.append(file_it->first);
-			st[current_name] = git_wd::file_status::deleted;
-			current_name.resize(name_len);
-		}
-
-		if (dir_it != d.dirs.end() && dir_it->first == de.name)
-		{
-			current_name.append(dir_it->first);
-			if (de.type() == dir_entry_type::directory)
+			if ((de.mode & 0xe000) == (d_first->mode & 0xe000))
 			{
-				current_name.append("/");
-				current_path_prefix.append(dir_it->first);
-				current_path_prefix.append("/");
-				status_dir(st, current_path_prefix, current_name, dir_it->second);
-				current_path_prefix.resize(path_prefix_len);
-			}
-			else
-			{
-				st[current_name] = git_wd::file_status::modified;
-			}
-			current_name.resize(name_len);
-
-			++dir_it;
-		}
-		else if (file_it != d.files.end() && file_it->first == de.name)
-		{
-			if (de.type() == dir_entry_type::file)
-			{
-				if (file_it->second.mtime != de.mtime)
+				if (is_gitlink(de.mode))
 				{
-					current_name.append(file_it->first);
-					current_path_prefix.append(file_it->first);
-					git_wd::file_status fs = check_file_status(current_path_prefix, file_it->second.oid);
-					if (fs != git_wd::file_status::none)
-						st[current_name] = fs;
+					// XXX
+				}
+				else if (is_dir(de.mode))
+				{
+					current_name.append(d_first->name);
+					current_name.append("/");
+					current_path_prefix.append(d_first->name);
+					current_path_prefix.append("/");
+					status_dir(st, current_path_prefix, current_name, d_first->children);
 					current_path_prefix.resize(path_prefix_len);
 					current_name.resize(name_len);
+				}
+				else
+				{
+					if (d_first->mtime != de.mtime)
+					{
+						current_path_prefix.append(d_first->name);
+						git_wd::file_status fs = check_file_status(current_path_prefix, d_first->oid);
+						if (fs != git_wd::file_status::none)
+						{
+							current_name.append(d_first->name);
+							st[current_name] = fs;
+							current_name.resize(name_len);
+						}
+						current_path_prefix.resize(path_prefix_len);
+					}
 				}
 			}
 			else
 			{
-				current_name.append(file_it->first);
+				current_name.append(d_first->name);
 				st[current_name] = git_wd::file_status::modified;
-				current_name.resize(name_len);
 			}
 
-			++file_it;
+			++d_first;
 		}
 		else
 		{
@@ -903,16 +919,9 @@ static void status_dir(std::map<std::string, git_wd::file_status> & st, std::str
 		}
 	}
 
-	for (; file_it != d.files.end(); ++file_it)
+	for (; d_first != d_last; ++d_first)
 	{
-		current_name.append(file_it->first);
-		st[current_name] = git_wd::file_status::deleted;
-		current_name.resize(name_len);
-	}
-
-	for (; dir_it != d.dirs.end(); ++dir_it)
-	{
-		current_name.append(dir_it->first);
+		current_name.append(d_first->name);
 		st[current_name] = git_wd::file_status::deleted;
 		current_name.resize(name_len);
 	}
@@ -957,102 +966,6 @@ object_id sha1(gitdb::object obj)
 {
 	return sha1(obj.type, obj.size, *obj.content);
 }
-
-#if 0
-
-static void tree_status_impl(git_wd::status_t & st, std::string & st_prefix, gitdb & db, gitdb::tree_t const & tree, index_dir const & dir)
-{
-	size_t old_prefix_len = st_prefix.size();
-
-	std::map<std::string, index_dir>::const_iterator dir_it = dir.dirs.begin();
-	std::map<std::string, index_entry>::const_iterator file_it = dir.files.begin();
-
-	for (auto && te : tree)
-	{
-		if ((te.mode & 0xe000) == 0xe000)
-		{
-			// gitlink
-		}
-		else if ((te.mode & 0xe000) == 0x4000)
-		{
-			// dir
-			for (; dir_it->first < te.name; ++dir_it)
-			{
-				st_prefix.append(dir_it->first);
-				st[st_prefix] = git_wd::file_status::added;
-				st_prefix.resize(old_prefix_len);
-			}
-
-			if (dir_it->first == te.name)
-			{
-				st_prefix.append(te.name);
-				st_prefix.append("/");
-				tree_status_impl(st, st_prefix, db, db.get_tree(te.oid), dir_it->second);
-				st_prefix.resize(old_prefix_len);
-
-				++dir_it;
-			}
-			else
-			{
-				st_prefix.append(te.name);
-				st[st_prefix] = git_wd::file_status::deleted;
-				st_prefix.resize(old_prefix_len);
-			}
-		}
-		else
-		{
-			// file
-			for (; file_it->first < te.name; ++file_it)
-			{
-				st_prefix.append(file_it->first);
-				st[st_prefix] = git_wd::file_status::added;
-				st_prefix.resize(old_prefix_len);
-			}
-
-			if (file_it->first == te.name)
-			{
-				if (file_it->second.oid != te.oid)
-				{
-					st_prefix.append(te.name);
-					st[st_prefix] = git_wd::file_status::modified;
-					st_prefix.resize(old_prefix_len);
-				}
-
-				++file_it;
-			}
-			else
-			{
-				st_prefix.append(te.name);
-				st[st_prefix] = git_wd::file_status::deleted;
-				st_prefix.resize(old_prefix_len);
-			}
-		}
-	}
-
-	for (; dir_it != dir.dirs.end(); ++dir_it)
-	{
-		st_prefix.append(dir_it->first);
-		st[st_prefix] = git_wd::file_status::deleted;
-		st_prefix.resize(old_prefix_len);
-	}
-
-	for (; file_it != dir.files.end(); ++file_it)
-	{
-		st_prefix.append(file_it->first);
-		st[st_prefix] = git_wd::file_status::deleted;
-		st_prefix.resize(old_prefix_len);
-	}
-}
-
-void git_wd::tree_status(status_t & st, object_id const & tree_oid)
-{
-	gitdb::tree_t tree = m_pimpl->m_db->get_tree(tree_oid);
-
-	std::string st_prefix;
-	tree_status_impl(st, st_prefix, *m_pimpl->m_db, tree, m_pimpl->m_root);
-}
-
-#else
 
 void tree_status_impl(git_wd::status_t & st, gitdb & db, git_wd::stage_tree const & stree, std::string & path_prefix, object_id const & stree_oid, object_id const & tree_oid)
 {
@@ -1123,38 +1036,38 @@ void git_wd::tree_status(status_t & st, object_id const & tree_oid)
 	}
 }
 
-#endif
-
 void git_wd::commit_status(status_t & st, object_id const & commit_oid)
 {
 	gitdb::commit_t c = m_pimpl->m_db->get_commit(commit_oid);
 	this->tree_status(st, c.tree_oid);
 }
 
-static object_id make_stage_tree_impl(git_wd::stage_tree & st, index_dir & d)
+static object_id make_stage_tree_impl(git_wd::stage_tree & st, std::vector<index_entry> const & d)
 {
 	std::vector<gitdb::tree_entry_t> tree;
-	for (auto && kv: d.dirs)
-	{
-		gitdb::tree_entry_t te;
-		te.name = kv.first;
-		te.mode = 0x4000;
-		te.oid = make_stage_tree_impl(st, kv.second);
-		tree.push_back(te);
-	}
 
-	for (auto && kv: d.files)
+	for (auto && ie: d)
 	{
-		gitdb::tree_entry_t te;
-		te.name = kv.first;
-		te.mode = kv.second.mode;
-		te.oid = kv.second.oid;
-		tree.push_back(te);
+		if (is_gitlink(ie.mode))
+		{
+		}
+		else if (is_dir(ie.mode))
+		{
+			gitdb::tree_entry_t te;
+			te.name = ie.name;
+			te.mode = 0x4000;
+			te.oid = make_stage_tree_impl(st, ie.children);
+			tree.push_back(te);
+		}
+		else
+		{
+			gitdb::tree_entry_t te;
+			te.name = ie.name;
+			te.mode = ie.mode;
+			te.oid = ie.oid;
+			tree.push_back(te);
+		}
 	}
-
-	std::sort(tree.begin(), tree.end(), [](gitdb::tree_entry_t const & lhs, gitdb::tree_entry_t const & rhs) {
-		return compare_tree_objects(lhs.name, lhs.mode, rhs.name, rhs.mode);
-	});
 
 	std::vector<uint8_t> tree_obj;
 	for (gitdb::tree_entry_t const & te: tree)
