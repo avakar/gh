@@ -833,6 +833,11 @@ static int compare_tree_objects(string_view lname, bool is_ldir, string_view rna
 		- (rname.size() == clen? (is_rdir? '/': 0): rname[clen]);
 }
 
+static bool is_file(uint32_t mode)
+{
+	return (mode & 0xe000) == 0x8000;
+}
+
 static bool is_dir(uint32_t mode)
 {
 	return (mode & 0xe000) == 0x4000;
@@ -847,7 +852,7 @@ static void status_dir(std::map<std::string, git_wd::file_status> & st, std::str
 {
 	auto dir_content = listdir(current_path_prefix);
 	std::sort(dir_content.begin(), dir_content.end(), [](directory_entry const & lhs, directory_entry const & rhs) {
-		return compare_tree_objects(lhs.name, (lhs.mode & 0xe000) == 0x4000, rhs.name, (rhs.mode & 0xe000) == 0x4000) < 0;
+		return compare_tree_objects(lhs.name, is_dir(lhs.mode), rhs.name, is_dir(rhs.mode)) < 0;
 	});
 
 	size_t path_prefix_len = current_path_prefix.size();
@@ -979,24 +984,27 @@ void tree_status_impl(git_wd::status_t & st, gitdb & db, git_wd::stage_tree cons
 
 	while (db_it != db_tree.end())
 	{
-		while (stage_it != stage_tree.end() && stage_it->name < db_it->name)
+		int r = stage_it == stage_tree.end()? 1: compare_tree_objects(stage_it->name, is_dir(stage_it->mode), db_it->name, is_dir(db_it->mode));
+
+		while (r < 0)
 		{
 			path_prefix.append(stage_it->name);
 			st[path_prefix] = git_wd::file_status::added;
 			path_prefix.resize(path_prefix_len);
 			++stage_it;
+			r = stage_it == stage_tree.end()? 1: compare_tree_objects(stage_it->name, is_dir(stage_it->mode), db_it->name, is_dir(db_it->mode));
 		}
 
-		if (stage_it != stage_tree.end() && stage_it->name == db_it->name)
+		if (r == 0)
 		{
 			if (stage_it->mode != db_it->mode
-				|| ((stage_it->mode & 0xe000) == 0x8000 && stage_it->oid != db_it->oid))
+				|| (is_file(stage_it->mode) && stage_it->oid != db_it->oid))
 			{
 				path_prefix.append(stage_it->name);
 				st[path_prefix] = git_wd::file_status::modified;
 				path_prefix.resize(path_prefix_len);
 			}
-			else if ((stage_it->mode & 0xe000) == 0x4000 && stage_it->oid != db_it->oid)
+			else if (is_dir(stage_it->mode) && stage_it->oid != db_it->oid)
 			{
 				path_prefix.append(stage_it->name);
 				path_prefix.append("/");
@@ -1048,10 +1056,7 @@ static object_id make_stage_tree_impl(git_wd::stage_tree & st, std::vector<index
 
 	for (auto && ie: d)
 	{
-		if (is_gitlink(ie.mode))
-		{
-		}
-		else if (is_dir(ie.mode))
+		if (is_dir(ie.mode))
 		{
 			gitdb::tree_entry_t te;
 			te.name = ie.name;

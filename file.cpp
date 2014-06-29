@@ -380,8 +380,11 @@ std::vector<directory_entry> listdir(string_view path, string_view mask)
 
 dir_entry_type directory_entry::type() const
 {
+
 	if ((mode & 0xe000) == 0x4000)
 		return dir_entry_type::directory;
+	else if ((mode & 0xe000) == 0xe000)
+		return dir_entry_type::gitlink;
 	else
 		return dir_entry_type::file;
 }

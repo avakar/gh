@@ -87,6 +87,7 @@ enum class dir_entry_type
 {
 	directory,
 	file,
+	gitlink,
 };
 
 struct directory_entry
