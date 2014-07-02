@@ -4,6 +4,7 @@
 #include "string_view.h"
 #include "object_id.h"
 #include "stream.h"
+#include "ignore.h"
 #include <memory>
 #include <vector>
 #include <map>
@@ -104,7 +105,7 @@ public:
 
 	typedef std::map<std::string, file_status> status_t;
 
-	void status(status_t & st);
+	void status(status_t & st, git_ignore const & ign);
 	void commit_status(status_t & st, object_id const & commit_oid);
 	void tree_status(status_t & st, object_id const & tree_oid);
 

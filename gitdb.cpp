@@ -202,6 +202,7 @@ gitdb::object object_pack::get_object(object_id oid, gitdb::object_type req_type
 	if (offs & 0x80000000)
 	{
 		// XXX: todo
+		assert(0);
 	}
 
 	return this->get_object(offs, req_type);
@@ -859,8 +860,19 @@ static int status_compare(string_view lhs, uint32_t lmode, string_view rhs, uint
 }
 
 // We expect index entries here to be sorted using `compare_filenames` and then by `mode`.
-static void status_dir(std::map<std::string, git_wd::file_status> & st, std::string & current_path_prefix, std::string & current_name, std::vector<index_entry const *> const & d)
+static void status_dir(std::map<std::string, git_wd::file_status> & st, std::string & current_path_prefix, std::string & current_name, std::vector<index_entry const *> const & d, git_ignore const & parent_ign)
 {
+	git_ignore ign(&parent_ign);
+
+	{
+		file fign;
+		if (fign.try_open(current_path_prefix + "/.gitignore", /*readonly=*/true))
+		{
+			file::ifile fi(fign.seekg(0));
+			ign.load(current_name, fi);
+		}
+	}
+
 	auto dir_content = listdir(current_path_prefix);
 	std::sort(dir_content.begin(), dir_content.end(), [](directory_entry const & lhs, directory_entry const & rhs) {
 		return compare_filenames(lhs.name, rhs.name) < 0;
@@ -924,7 +936,7 @@ static void status_dir(std::map<std::string, git_wd::file_status> & st, std::str
 					current_name.append("/");
 					current_path_prefix.append((*d_first)->name);
 					current_path_prefix.append("/");
-					status_dir(st, current_path_prefix, current_name, nested_entries);
+					status_dir(st, current_path_prefix, current_name, nested_entries, ign);
 					current_path_prefix.resize(path_prefix_len);
 					current_name.resize(name_len);
 
@@ -958,7 +970,8 @@ static void status_dir(std::map<std::string, git_wd::file_status> & st, std::str
 		else
 		{
 			current_name.append(de.name);
-			st[current_name] = git_wd::file_status::added;
+			if (!ign.match(is_dir(de.mode)? current_name + "/": current_name))
+				st[current_name] = git_wd::file_status::added;
 			current_name.resize(name_len);
 		}
 	}
@@ -971,7 +984,7 @@ static void status_dir(std::map<std::string, git_wd::file_status> & st, std::str
 	}
 }
 
-void git_wd::status(std::map<std::string, file_status> & st)
+void git_wd::status(std::map<std::string, file_status> & st, git_ignore const & ign)
 {
 	assert(!m_pimpl->m_path.empty());
 
@@ -986,7 +999,8 @@ void git_wd::status(std::map<std::string, file_status> & st)
 		return status_compare(lhs->name, lhs->mode, rhs->name, rhs->mode) < 0;
 	});
 
-	status_dir(st, current_path, current_name, root_entries);
+	git_ignore ign_copy(ign);
+	status_dir(st, current_path, current_name, root_entries, ign_copy);
 }
 
 object_id sha1(gitdb::object_type type, file_offset_t size, istream & s)

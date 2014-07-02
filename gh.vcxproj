@@ -51,7 +51,7 @@
       </PrecompiledHeader>
       <WarningLevel>Level4</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>_SCL_SECURE_NO_WARNINGS;WIN32;_DEBUG;_CONSOLE;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_SCL_SECURE_NO_WARNINGS;WIN32;_DEBUG;_CONSOLE;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -81,6 +81,7 @@
     <ClCompile Include="console.cpp" />
     <ClCompile Include="file.cpp" />
     <ClCompile Include="gitdb.cpp" />
+    <ClCompile Include="ignore.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="object_id.cpp" />
     <ClCompile Include="sha1.cpp" />
@@ -95,6 +96,7 @@
     <ClInclude Include="console.h" />
     <ClInclude Include="file.h" />
     <ClInclude Include="gitdb.h" />
+    <ClInclude Include="ignore.h" />
     <ClInclude Include="object_id.h" />
     <ClInclude Include="sha1.h" />
     <ClInclude Include="stream.h" />

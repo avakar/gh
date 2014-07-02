@@ -13,6 +13,7 @@
     <ClCompile Include="checkout_filter.cpp" />
     <ClCompile Include="cmdline.cpp" />
     <ClCompile Include="console.cpp" />
+    <ClCompile Include="ignore.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="file.h" />
@@ -27,5 +28,6 @@
     <ClInclude Include="checkout_filter.h" />
     <ClInclude Include="cmdline.h" />
     <ClInclude Include="console.h" />
+    <ClInclude Include="ignore.h" />
   </ItemGroup>
 </Project>

@@ -156,7 +156,9 @@ static int gh_status(cmdline & args)
 		fs.clear();
 	}
 
-	wd.status(fs);
+	git_ignore ign;
+	ign.add_pattern("", "/.git");
+	wd.status(fs, ign);
 	print_status(fs, /*untracked=*/true);
 
 	return 0;

@@ -1,0 +1,7 @@
+Debug/
+Release/
+/data/
+**.suo
+**.vcxproj.user
+**.vsp
+**.psess
