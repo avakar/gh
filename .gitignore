@@ -5,3 +5,5 @@ Release/
 **.vcxproj.user
 **.vsp
 **.psess
+**.opensdf
+**.sdf
