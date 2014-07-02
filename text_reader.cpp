@@ -1,4 +1,5 @@
 #include "text_reader.h"
+#include <algorithm>
 
 stream_reader::stream_reader(istream & s)
 	: m_s(s)
@@ -20,6 +21,9 @@ bool stream_reader::read_line(std::string & line)
 		if (eol_it != m_buffer.end())
 		{
 			line.assign(m_buffer.begin(), eol_it);
+			line.erase(
+				std::remove(line.begin(), line.end(), '\r'),
+				line.end());
 			m_buffer.erase(m_buffer.begin(), std::next(eol_it));
 			return true;
 		}
@@ -31,6 +35,9 @@ bool stream_reader::read_line(std::string & line)
 		if (r == 0)
 		{
 			line.assign(m_buffer.begin(), m_buffer.begin() + buf_size);
+			line.erase(
+				std::remove(line.begin(), line.end(), '\r'),
+				line.end());
 			m_buffer.clear();
 			return !line.empty();
 		}
