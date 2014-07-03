@@ -32,6 +32,9 @@ static bool fnmatch(string_view pattern, string_view str)
 			++pat_first;
 			if (pat_first != pat_last && *pat_first == '*')
 			{
+				if (pat_first == pat_last)
+					return true;
+
 				for (char const * cur = str_first; cur != str_last; ++cur)
 				{
 					if (fnmatch(string_view(pat_first + 1, pat_last), string_view(cur, str_last)))
@@ -40,6 +43,9 @@ static bool fnmatch(string_view pattern, string_view str)
 			}
 			else
 			{
+				if (pat_first == pat_last)
+					return true;
+
 				for (char const * cur = str_first; cur != str_last && *cur != '/'; ++cur)
 				{
 					if (fnmatch(string_view(pat_first, pat_last), string_view(cur, str_last)))
