@@ -52,6 +52,16 @@ public:
 		uint32_t mode;
 		std::string name;
 		object_id oid;
+
+		tree_entry_t()
+			: mode(0)
+		{
+		}
+
+		tree_entry_t(tree_entry_t && o)
+			: mode(o.mode), name(std::move(o.name)), oid(o.oid)
+		{
+		}
 	};
 
 	typedef std::vector<tree_entry_t> tree_t;

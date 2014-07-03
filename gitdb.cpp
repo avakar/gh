@@ -618,6 +618,7 @@ std::shared_ptr<istream> gitdb::get_blob_stream(object_id oid)
 
 struct index_entry
 {
+public:
 	uint32_t ctime;
 //	uint32_t ctime_nano;
 	uint32_t mtime;
@@ -637,6 +638,16 @@ struct index_entry
 		: ctime(0), mtime(0), mode(0), size(0)
 	{
 	}
+
+	index_entry(index_entry && o)
+		: ctime(o.ctime), mtime(o.mtime), mode(o.mode), size(o.size), oid(o.oid),
+		name(std::move(o.name)), children(std::move(o.children))
+	{
+	}
+
+private:
+	index_entry(index_entry const &);
+	index_entry & operator=(index_entry const &);
 };
 
 struct git_wd::impl
@@ -1115,6 +1126,7 @@ void git_wd::commit_status(status_t & st, object_id const & commit_oid)
 static object_id make_stage_tree_impl(git_wd::stage_tree & st, std::vector<index_entry> const & d)
 {
 	std::vector<gitdb::tree_entry_t> tree;
+	tree.reserve(d.size());
 
 	for (auto && ie: d)
 	{
@@ -1136,7 +1148,12 @@ static object_id make_stage_tree_impl(git_wd::stage_tree & st, std::vector<index
 		}
 	}
 
+	size_t obj_size_approx = 0;
+	for (gitdb::tree_entry_t const & te : tree)
+		obj_size_approx += te.name.size() + 28;
+
 	std::vector<uint8_t> tree_obj;
+	tree_obj.reserve(obj_size_approx);
 	for (gitdb::tree_entry_t const & te: tree)
 	{
 		char mode_buf[32];
