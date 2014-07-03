@@ -13,6 +13,7 @@ namespace gh_opts {
 		cmd,
 		repo,
 		time,
+		profile,
 		bare,
 		wd_dir,
 		ref,
@@ -34,6 +35,7 @@ static cmdline_entry const cmdline_entries[] =
 	{ gh_opts::cmd, 0, "command", "", 1, 0, "the command to execute" },
 	{ gh_opts::repo, 'R', "--repo", ".", 1, 0, "the path to the repository or inside a working dir" },
 	{ gh_opts::time, 0, "--time", "", 0, 0, "print the total time spent executing gh" },
+	{ gh_opts::profile, 0, "--profile", "1", 1, 0, "repeat the execution of the command (for profiling)" },
 
 	{ gh_opts::bare, 0, "--bare", "", 0, gh_subparser::init, "create a bare repo" },
 
@@ -191,32 +193,39 @@ int main(int argc, char * argv[])
 	bool profile = args.pop_switch(gh_opts::time);
 	std::string cmd = args.pop_string(gh_opts::cmd);
 
+	int profile_repeat = atoi(args.pop_string(gh_opts::profile).c_str());
+
 	try
 	{
-		timer tmr(profile);
-
-		if (cmd == "init")
+		int r = 1;
+		for (int i = 0; i < profile_repeat; ++i)
 		{
-			return gh_init(args);
-		}
-		else if (cmd == "test-checkout")
-		{
-			args.set_subparser(gh_subparser::test_checkout);
+			timer tmr(profile);
+			cmdline subargs = args;
 
-			gitdb db0;
-			db0.open(args.pop_string(gh_opts::repo, "."));
+			if (cmd == "init")
+			{
+				r = gh_init(subargs);
+			}
+			else if (cmd == "test-checkout")
+			{
+				subargs.set_subparser(gh_subparser::test_checkout);
 
-			object_id head_oid = db0.get_ref(args.pop_string(gh_opts::ref));
-			gitdb::commit_t cc = db0.get_commit(head_oid);
-			checkout_tree(db0, args.pop_string(gh_opts::wd_dir), db0.get_tree(cc.tree_oid));
-			return 0;
-		}
-		else if (cmd == "st" || cmd == "status")
-		{
-			return gh_status(args);
+				gitdb db0;
+				db0.open(subargs.pop_string(gh_opts::repo, "."));
+
+				object_id head_oid = db0.get_ref(subargs.pop_string(gh_opts::ref));
+				gitdb::commit_t cc = db0.get_commit(head_oid);
+				checkout_tree(db0, subargs.pop_string(gh_opts::wd_dir), db0.get_tree(cc.tree_oid));
+				r = 0;
+			}
+			else if (cmd == "st" || cmd == "status")
+			{
+				r = gh_status(subargs);
+			}
 		}
 
-		return 1;
+		return r;
 	}
 	catch (std::exception const & e)
 	{
