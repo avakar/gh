@@ -116,6 +116,8 @@ static bool open_wd(gitdb & db, git_wd & wd, string_view path)
 			wd.open(db, path);
 			return true;
 		}
+
+		path = get_path_head(path);
 	}
 	return false;
 }
