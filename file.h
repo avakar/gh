@@ -90,9 +90,12 @@ enum class dir_entry_type
 	gitlink,
 };
 
+std::string cannon_path(string_view path);
+
 struct directory_entry
 {
 	std::string name;
+	std::string cannon_name;
 	uint32_t mtime;
 	uint32_t mode;
 
@@ -101,7 +104,7 @@ struct directory_entry
 	}
 
 	directory_entry(std::string name, uint32_t mtime, uint32_t mode)
-		: name(std::move(name)), mtime(mtime), mode(mode)
+		: name(std::move(name)), cannon_name(cannon_path(this->name)), mtime(mtime), mode(mode)
 	{
 	}
 

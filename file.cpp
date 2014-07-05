@@ -424,3 +424,27 @@ int compare_filenames(string_view lhs, string_view rhs)
 
 	return RtlCompareUnicodeString(&ulhs, &urhs, TRUE);
 }
+
+std::string cannon_path(string_view path)
+{
+	std::string res;
+	if (path.empty())
+		return res;
+
+	res.resize(path.size());
+
+	char const * first = path.begin();
+	char const * last = path.end();
+	char * out = &res[0];
+	while (first != last)
+	{
+		char ch = *first++;
+		if (ch & 0x80)
+			throw std::runtime_error("XXX unicode not supported yet: " + path);
+		if ('a' <= ch && ch <= 'z')
+			ch -= 'a' - 'A';
+		*out++ = ch;
+	}
+
+	return res;
+}
