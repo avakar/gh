@@ -632,6 +632,7 @@ public:
 	object_id oid;
 //	uint16_t flags;
 	std::string name;
+	std::string cannon_name;
 	std::vector<index_entry> children;
 
 	index_entry()
@@ -641,7 +642,7 @@ public:
 
 	index_entry(index_entry && o)
 		: ctime(o.ctime), mtime(o.mtime), mode(o.mode), size(o.size), oid(o.oid),
-		name(std::move(o.name)), children(std::move(o.children))
+		name(std::move(o.name)), cannon_name(std::move(o.cannon_name)), children(std::move(o.children))
 	{
 	}
 
@@ -758,6 +759,7 @@ void git_wd::open(gitdb & db, string_view path)
 					{
 						index_entry ie = {};
 						ie.name = c0;
+						ie.cannon_name = cannon_path(c0);
 						ie.mode = 0x4000;
 						current_dir->push_back(std::move(ie));
 					}
@@ -769,6 +771,7 @@ void git_wd::open(gitdb & db, string_view path)
 				}
 
 				ie.name.assign(suffix);
+				ie.cannon_name.assign(cannon_path(suffix));
 
 				current_dir->push_back(std::move(ie));
 				++current_count;
@@ -860,14 +863,12 @@ static bool is_gitlink(uint32_t mode)
 	return (mode & 0xe000) == 0xe000;
 }
 
-static int status_compare(string_view lhs, uint32_t lmode, string_view rhs, uint32_t rmode)
+static bool cannon_less(index_entry const & lhs, index_entry const & rhs)
 {
-	int r = compare_filenames(lhs, rhs);
-	if (r != 0)
-		return r;
-	if (lmode == rmode)
-		return 0;
-	return lmode < rmode? -1: 1;
+	int r = cmp(lhs.cannon_name, rhs.cannon_name);
+	if (r == 0)
+		return lhs.mode < rhs.mode;
+	return r < 0;
 }
 
 // We expect index entries here to be sorted using `compare_filenames` and then by `mode`.
@@ -886,7 +887,7 @@ static void status_dir(std::map<std::string, git_wd::file_status> & st, std::str
 
 	auto dir_content = listdir(current_path_prefix);
 	std::sort(dir_content.begin(), dir_content.end(), [](directory_entry const & lhs, directory_entry const & rhs) {
-		return compare_filenames(lhs.name, rhs.name) < 0;
+		return lhs.cannon_name < rhs.cannon_name;
 	});
 
 	// There won't be duplicates (relative to `compare_filenames`) in `dir_content`, but
@@ -902,7 +903,7 @@ static void status_dir(std::map<std::string, git_wd::file_status> & st, std::str
 
 	for (directory_entry const & de: dir_content)
 	{
-		int r = d_first == d_last? 1: compare_filenames((*d_first)->name, de.name);
+		int r = d_first == d_last? 1: cmp((*d_first)->cannon_name, de.cannon_name);
 
 		for (; r < 0; ++d_first)
 		{
@@ -910,7 +911,7 @@ static void status_dir(std::map<std::string, git_wd::file_status> & st, std::str
 			st[current_name] = git_wd::file_status::deleted;
 			current_name.resize(name_len);
 
-			r = d_first == d_last? 1: compare_filenames((*d_first)->name, de.name);
+			r = d_first == d_last? 1: compare_filenames((*d_first)->cannon_name, de.cannon_name);
 		}
 
 		if (r == 0)
@@ -928,7 +929,7 @@ static void status_dir(std::map<std::string, git_wd::file_status> & st, std::str
 					// We search for the equal range in `d` here, since we'll have to merge
 					// all the distinct directories together.
 					index_entry const * const * d_next = d_first + 1;
-					while (d_next != d_last && status_compare((*d_next)->name, (*d_next)->mode, de.name, de.mode) == 0)
+					while (d_next != d_last && (*d_next)->mode == de.mode && (*d_next)->cannon_name == de.cannon_name)
 						++d_next;
 
 					std::vector<index_entry const *> nested_entries;
@@ -940,7 +941,7 @@ static void status_dir(std::map<std::string, git_wd::file_status> & st, std::str
 					}
 
 					std::stable_sort(nested_entries.begin(), nested_entries.end(), [](index_entry const * lhs, index_entry const * rhs) {
-						return status_compare(lhs->name, lhs->mode, rhs->name, rhs->mode) < 0;
+						return cannon_less(*lhs, *rhs);
 					});
 
 					current_name.append((*d_first)->name);
@@ -1007,7 +1008,7 @@ void git_wd::status(std::map<std::string, file_status> & st, git_ignore const & 
 	for (index_entry const & ie: m_pimpl->m_root)
 		root_entries.push_back(&ie);
 	std::stable_sort(root_entries.begin(), root_entries.end(), [](index_entry const * lhs, index_entry const * rhs) {
-		return status_compare(lhs->name, lhs->mode, rhs->name, rhs->mode) < 0;
+		return cannon_less(*lhs, *rhs);
 	});
 
 	git_ignore ign_copy(ign);
