@@ -190,15 +190,15 @@ private:
 
 int main(int argc, char * argv[])
 {
-	cmdline args(cmdline_entries, std::end(cmdline_entries), argc - 1, argv + 1);
-
-	bool profile = args.pop_switch(gh_opts::time);
-	std::string cmd = args.pop_string(gh_opts::cmd);
-
-	int profile_repeat = atoi(args.pop_string(gh_opts::profile).c_str());
-
 	try
 	{
+		cmdline args(cmdline_entries, std::end(cmdline_entries), argc - 1, argv + 1);
+
+		bool profile = args.pop_switch(gh_opts::time);
+		std::string cmd = args.pop_string(gh_opts::cmd);
+
+		int profile_repeat = atoi(args.pop_string(gh_opts::profile).c_str());
+
 		int r = 1;
 		for (int i = 0; i < profile_repeat; ++i)
 		{
