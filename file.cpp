@@ -346,6 +346,7 @@ bool file::is_directory(string_view path)
 std::vector<directory_entry> listdir(string_view path, string_view mask)
 {
 	std::vector<directory_entry> res;
+	res.reserve(128);
 
 	WIN32_FIND_DATAW wfd;
 	HANDLE hFind = ::FindFirstFileExW(to_utf16(path.to_string() + "/" + mask.to_string()).c_str(), FindExInfoBasic, &wfd, FindExSearchNameMatch, 0, 0);

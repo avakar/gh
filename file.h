@@ -108,6 +108,29 @@ struct directory_entry
 	{
 	}
 
+	directory_entry(directory_entry && o)
+		: name(std::move(o.name)), cannon_name(std::move(o.cannon_name)),
+		mtime(o.mtime), mode(o.mode)
+	{
+	}
+
+	directory_entry & operator=(directory_entry && o)
+	{
+		name = std::move(o.name);
+		cannon_name = std::move(o.cannon_name);
+		mtime = o.mtime;
+		mode = o.mode;
+		return *this;
+	}
+
+	friend void swap(directory_entry & lhs, directory_entry & rhs)
+	{
+		lhs.name.swap(rhs.name);
+		lhs.cannon_name.swap(rhs.cannon_name);
+		std::swap(lhs.mtime, rhs.mtime);
+		std::swap(lhs.mode, rhs.mode);
+	}
+
 	dir_entry_type type() const;
 };
 
