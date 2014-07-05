@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stddef.h>
 #include <vector>
+#include <algorithm>
 
 class string_view
 {
@@ -151,6 +152,15 @@ private:
 inline bool starts_with(string_view s, string_view prefix)
 {
 	return prefix.size() <= s.size() && std::equal(prefix.begin(), prefix.end(), s.begin());
+}
+
+inline int cmp(string_view lhs, string_view rhs)
+{
+	size_t min_size = (std::min)(lhs.size(), rhs.size());
+	int r = memcmp(lhs.data(), rhs.data(), min_size);
+	if (r == 0)
+		r = (lhs.size() < rhs.size()? -1: (lhs.size() == rhs.size()? 0: 1));
+	return r;
 }
 
 #endif // STRING_VIEW_H
