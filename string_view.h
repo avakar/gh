@@ -57,6 +57,16 @@ public:
 		return last;
 	}
 
+	char front() const
+	{
+		return *first;
+	}
+
+	char back() const
+	{
+		return last[-1];
+	}
+
 	char operator[](size_t i) const
 	{
 		return first[i];
