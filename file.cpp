@@ -1,21 +1,9 @@
 #include "file.h"
 #include "utf.h"
+#include "win_error.h"
 #include <memory>
 #include <windows.h>
 #include <assert.h>
-
-class windows_error
-	: public std::runtime_error
-{
-public:
-	windows_error(DWORD lasterror)
-		: std::runtime_error("windows_error"), lasterror(lasterror)
-	{
-	}
-
-private:
-	DWORD lasterror;
-};
 
 file::file()
 	: m_fd(0)
@@ -276,28 +264,6 @@ void file::create(string_view path, string_view content)
 	write_all(of, (uint8_t const *)content.begin(), content.size());
 }
 
-string_view get_path_head(string_view path)
-{
-	char const * p = path.end();
-	for (; p != path.begin(); --p)
-	{
-		if (p[-1] == '/' || p[-1] == '\\')
-			return string_view(path.begin(), p - 1);
-	}
-	return string_view();
-}
-
-string_view get_path_tail(string_view path)
-{
-	char const * p = path.end();
-	for (; p != path.begin(); --p)
-	{
-		if (p[-1] == '/' || p[-1] == '\\')
-			return string_view(p, path.end());
-	}
-	return path;
-}
-
 bool file::exists(string_view path)
 {
 	DWORD attrs = ::GetFileAttributesW(to_utf16(path).c_str());
@@ -388,64 +354,4 @@ dir_entry_type directory_entry::type() const
 		return dir_entry_type::gitlink;
 	else
 		return dir_entry_type::file;
-}
-
-struct UNICODE_STRING
-{
-	USHORT Length;
-	USHORT MaximumLength;
-	PWSTR  Buffer;
-};
-
-typedef LONG __stdcall RtlCompareUnicodeString_t(UNICODE_STRING const * String1, UNICODE_STRING const * String2, BOOLEAN CaseInSensitive);
-RtlCompareUnicodeString_t * g_RtlCompareUnicodeString = 0;
-
-int compare_filenames(string_view lhs, string_view rhs)
-{
-	// Normally, we'd use CompareStringOrdinal, but unfortunately, it's Vista+ only.
-
-	RtlCompareUnicodeString_t * RtlCompareUnicodeString = static_cast<RtlCompareUnicodeString_t * volatile &>(g_RtlCompareUnicodeString);
-	if (RtlCompareUnicodeString == 0)
-	{
-		HMODULE hNtdll = GetModuleHandleW(L"ntdll.dll");
-		RtlCompareUnicodeString = (RtlCompareUnicodeString_t *)GetProcAddress(hNtdll, "RtlCompareUnicodeString");
-		static_cast<RtlCompareUnicodeString_t * volatile &>(g_RtlCompareUnicodeString) = RtlCompareUnicodeString;
-	}
-
-	std::wstring wlhs = to_utf16(lhs);
-	std::wstring wrhs = to_utf16(rhs);
-
-	UNICODE_STRING ulhs;
-	ulhs.Buffer = (PWSTR)wlhs.data();
-	ulhs.Length = (USHORT)(wlhs.size() * 2);
-
-	UNICODE_STRING urhs;
-	urhs.Buffer = (PWSTR)wrhs.data();
-	urhs.Length = (USHORT)(wrhs.size() * 2);
-
-	return RtlCompareUnicodeString(&ulhs, &urhs, TRUE);
-}
-
-std::string cannon_path(string_view path)
-{
-	std::string res;
-	if (path.empty())
-		return res;
-
-	res.resize(path.size());
-
-	char const * first = path.begin();
-	char const * last = path.end();
-	char * out = &res[0];
-	while (first != last)
-	{
-		char ch = *first++;
-		if (ch & 0x80)
-			throw std::runtime_error("XXX unicode not supported yet: " + path);
-		if ('a' <= ch && ch <= 'z')
-			ch -= 'a' - 'A';
-		*out++ = ch;
-	}
-
-	return res;
 }

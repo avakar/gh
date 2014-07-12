@@ -113,6 +113,8 @@ public:
 		none,
 	};
 
+	std::string os_path_to_repo_path(string_view os_path);
+
 	typedef std::map<std::string, file_status> status_t;
 
 	void status(status_t & st, git_ignore const & ign);

@@ -14,6 +14,7 @@
     <ClCompile Include="cmdline.cpp" />
     <ClCompile Include="console.cpp" />
     <ClCompile Include="ignore.cpp" />
+    <ClCompile Include="path.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="file.h" />
@@ -29,5 +30,7 @@
     <ClInclude Include="cmdline.h" />
     <ClInclude Include="console.h" />
     <ClInclude Include="ignore.h" />
+    <ClInclude Include="path.h" />
+    <ClInclude Include="win_error.h" />
   </ItemGroup>
 </Project>

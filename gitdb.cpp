@@ -759,7 +759,7 @@ void git_wd::open(gitdb & db, string_view path)
 					{
 						index_entry ie = {};
 						ie.name = c0;
-						ie.cannon_name = cannon_path(c0);
+						ie.cannon_name = cannonical_path(c0);
 						ie.mode = 0x4000;
 						current_dir->push_back(std::move(ie));
 					}
@@ -771,7 +771,7 @@ void git_wd::open(gitdb & db, string_view path)
 				}
 
 				ie.name.assign(suffix);
-				ie.cannon_name.assign(cannon_path(suffix));
+				ie.cannon_name.assign(cannonical_path(suffix));
 
 				current_dir->push_back(std::move(ie));
 				++current_count;
@@ -911,7 +911,7 @@ static void status_dir(std::map<std::string, git_wd::file_status> & st, std::str
 			st[current_name] = git_wd::file_status::deleted;
 			current_name.resize(name_len);
 
-			r = d_first == d_last? 1: compare_filenames((*d_first)->cannon_name, de.cannon_name);
+			r = d_first == d_last? 1: cmp((*d_first)->cannon_name, de.cannon_name);
 		}
 
 		if (r == 0)
@@ -1196,4 +1196,9 @@ static object_id make_stage_tree_impl(git_wd::stage_tree & st, std::vector<index
 void git_wd::make_stage_tree(stage_tree & st)
 {
 	st.root_tree = make_stage_tree_impl(st, m_pimpl->m_root);
+}
+
+std::string git_wd::os_path_to_repo_path(string_view os_path)
+{
+	return relative_path(os_path, m_pimpl->m_path);
 }

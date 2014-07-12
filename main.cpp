@@ -107,9 +107,12 @@ static int gh_init(cmdline & args)
 
 static bool open_wd(gitdb & db, git_wd & wd, string_view path)
 {
+	std::string apath = absolute_path(clean_path(path));
+	path = apath;
+
 	while (!path.empty())
 	{
-		std::string nonbare_path = path + "/.git";
+		std::string nonbare_path = join_paths(path, ".git");
 		if (file::is_directory(nonbare_path))
 		{
 			db.open(nonbare_path);
@@ -117,7 +120,7 @@ static bool open_wd(gitdb & db, git_wd & wd, string_view path)
 			return true;
 		}
 
-		path = get_path_head(path);
+		path = path_head(path);
 	}
 	return false;
 }

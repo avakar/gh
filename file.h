@@ -3,6 +3,7 @@
 
 #include "string_view.h"
 #include "stream.h"
+#include "path.h"
 #include <stdint.h>
 
 class file
@@ -90,8 +91,6 @@ enum class dir_entry_type
 	gitlink,
 };
 
-std::string cannon_path(string_view path);
-
 struct directory_entry
 {
 	std::string name;
@@ -104,7 +103,7 @@ struct directory_entry
 	}
 
 	directory_entry(std::string name, uint32_t mtime, uint32_t mode)
-		: name(std::move(name)), cannon_name(cannon_path(this->name)), mtime(mtime), mode(mode)
+		: name(std::move(name)), cannon_name(cannonical_path(this->name)), mtime(mtime), mode(mode)
 	{
 	}
 
@@ -187,10 +186,5 @@ inline dir_enum_proxy enumdir(string_view path, string_view mask = "*")
 std::vector<directory_entry> listdir(string_view path, string_view mask = "*");
 
 bool make_directory(string_view path);
-
-int compare_filenames(string_view lhs, string_view rhs);
-
-string_view get_path_head(string_view path);
-string_view get_path_tail(string_view path);
 
 #endif // FILE_H
