@@ -14,10 +14,14 @@ std::string normalize_path(string_view path);
 std::string relative_path(string_view path);
 std::string relative_path(string_view path, string_view base);
 std::string cannonical_path(string_view path);
+std::string find_path(string_view base_dir, string_view path);
 
 string_view path_root(string_view path);
 string_view path_head(string_view path);
 string_view path_tail(string_view path);
+
+string_view split_path_left(string_view & path);
+string_view split_path_right(string_view & path);
 
 std::string current_dir();
 

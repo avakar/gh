@@ -106,6 +106,21 @@ public:
 		return string_view(p, p + n);
 	}
 
+	string_view rstrip(char ch) const
+	{
+		char const * p = last;
+		while (p != first && p[-1] == ch)
+			--p;
+		return string_view(first, p);
+	}
+
+	string_view trim_right(size_t count) const
+	{
+		if (this->size() < count)
+			return string_view();
+		return string_view(first, last - count);
+	}
+
 	std::vector<string_view> split(char ch)
 	{
 		std::vector<string_view> res;
@@ -151,6 +166,28 @@ public:
 	friend bool operator!=(string_view const & lhs, string_view const & rhs)
 	{
 		return !(lhs == rhs);
+	}
+
+	friend int cmp(string_view lhs, string_view rhs);
+
+	friend bool operator<(string_view const & lhs, string_view const & rhs)
+	{
+		return cmp(lhs, rhs) < 0;
+	}
+
+	friend bool operator>(string_view const & lhs, string_view const & rhs)
+	{
+		return cmp(lhs, rhs) > 0;
+	}
+
+	friend bool operator<=(string_view const & lhs, string_view const & rhs)
+	{
+		return cmp(lhs, rhs) <= 0;
+	}
+
+	friend bool operator>=(string_view const & lhs, string_view const & rhs)
+	{
+		return cmp(lhs, rhs) >= 0;
 	}
 
 private:

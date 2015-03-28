@@ -1,6 +1,7 @@
 #include "path.h"
 #include "utf.h"
 #include "win_error.h"
+#include "file.h"
 #include <assert.h>
 #include <windows.h>
 
@@ -297,4 +298,92 @@ std::string cannonical_path(string_view path)
 	}
 
 	return res;
+}
+
+string_view split_path_right(string_view & path)
+{
+	assert(!path.empty());
+
+	char const * p = path.end();
+	if (p != path.begin() && p[-1] == '/')
+		--p;
+
+	for (; p != path.begin(); --p)
+	{
+		if (p[-1] == '/')
+		{
+			string_view res(p, path.end());
+			path = string_view(path.begin(), p);
+			return res;
+		}
+	}
+
+	string_view res;
+	std::swap(res, path);
+	return res;
+}
+
+string_view split_path_left(string_view & path)
+{
+	assert(!path.empty());
+
+	string_view root = path_root(path);
+	if (!root.empty())
+	{
+		path = path.substr(root.size());
+		return root;
+	}
+
+	char const * p = path.begin();
+	while (p != path.end() && *p == '/')
+		++p;
+
+	for (; p != path.end(); ++p)
+	{
+		if (*p == '/')
+		{
+			string_view res(path.begin(), p + 1);
+			path = string_view(p + 1, path.end());
+			return res;
+		}
+	}
+
+	string_view res;
+	std::swap(res, path);
+	return res;
+}
+
+std::string find_path(string_view base_dir, string_view path)
+{
+	assert(!base_dir.empty());
+
+	std::string cur = base_dir;
+	if (cur.back() != '/')
+		cur += "/";
+
+	size_t base_len = cur.size();
+	while (!path.empty())
+	{
+		string_view comp = split_path_left(path);
+		bool trailing_slash = !comp.empty() && comp.back() == '/';
+		if (trailing_slash)
+			comp = comp.trim_right(1);
+
+		auto des = listdir(cur, comp);
+		if (des.empty())
+			return std::string();
+
+		assert(des.size() == 1);
+		auto && de = des.front();
+
+		if (trailing_slash && de.type() != dir_entry_type::directory)
+			return std::string();
+
+		assert(cur.empty() || cur.back() == '/');
+		cur += de.name;
+		if (trailing_slash)
+			cur += '/';
+	}
+
+	return string_view(cur).substr(base_len);
 }
