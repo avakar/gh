@@ -1,0 +1,26 @@
+[[crate]]
+name = "gh"
+type = "cpp-exe"
+sources = ["main.cpp"]
+link = ["ghlib"]
+
+[[crate]]
+name = "ghlib"
+type = "cpp-lib"
+sources = [
+    "checkout_filter.cpp",
+    "cmdline.cpp",
+    "console.cpp",
+    "file.cpp",
+    "gitdb.cpp",
+    "ignore.cpp",
+    "object_id.cpp",
+    "path.cpp",
+    "sha1.cpp",
+    "stream.cpp",
+    "text_reader.cpp",
+    "utf.cpp",
+    "zlib_stream.cpp",
+    ]
+includes = ["*.h"]
+link = ["zlib"]
